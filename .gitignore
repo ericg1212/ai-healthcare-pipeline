@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environment
+.env
+.env.*
+!.env.example
+venv/
+env/
+.venv/
+
+# dbt
+dbt_pipeline/target/
+dbt_pipeline/dbt_packages/
+dbt_pipeline/logs/
+dbt_pipeline/.user.yml
+
+# Great Expectations
+quality/great_expectations/uncommitted/
+
+# Dagster
+$DAGSTER_HOME/
+
+# Streamlit
+.streamlit/
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data
+*.parquet
+*.csv
+data/
+synthetic_data/

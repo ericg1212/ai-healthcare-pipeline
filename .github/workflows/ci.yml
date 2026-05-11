@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e8a3a6d5b7b8f754  # v5.6.0
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - run: pip install flake8
+      - run: flake8 . --max-line-length=120 --exclude=dbt_pipeline/target,dbt_pipeline/dbt_packages,.venv
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e8a3a6d5b7b8f754  # v5.6.0
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - run: pytest tests/ -v --cov=. --cov-report=term-missing

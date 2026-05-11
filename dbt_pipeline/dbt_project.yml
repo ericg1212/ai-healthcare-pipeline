@@ -1,0 +1,19 @@
+name: ai_healthcare
+version: "1.0.0"
+config-version: 2
+
+profile: ai_healthcare
+
+model-paths: ["models"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+models:
+  ai_healthcare:
+    staging:
+      +materialized: view
+      +schema: staging
+    marts:
+      +materialized: table
+      +schema: marts
