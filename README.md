@@ -1,2 +1,2 @@
-# -AI-LLM-Analytics-Layer-on-Healthcare-Data-Infrastructure
+# AI-LLM-Analytics-Layer-on-Healthcare-Data-Infrastructure
 ...
