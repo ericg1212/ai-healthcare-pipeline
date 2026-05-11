@@ -1,0 +1,13 @@
+ai_healthcare:
+  target: dev
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'placeholder') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'placeholder') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', 'placeholder') }}"
+      role: TRANSFORMER
+      database: AI_HEALTHCARE
+      warehouse: AI_HEALTHCARE_WH
+      schema: staging
+      threads: 4

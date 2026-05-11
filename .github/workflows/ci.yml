@@ -30,3 +30,44 @@ jobs:
           cache: "pip"
       - run: pip install -r requirements.txt
       - run: pytest tests/ -v --cov=. --cov-report=term-missing
+
+  dbt-check:
+    name: dbt-check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e8a3a6d5b7b8f754  # v5.6.0
+        with:
+          python-version: "3.13"
+          cache: "pip"
+      - run: pip install dbt-core dbt-snowflake
+      - name: dbt parse (compile check — no DB connection required)
+        working-directory: dbt_pipeline
+        run: dbt parse --profiles-dir .
+
+  docker:
+    name: docker
+    runs-on: ubuntu-latest
+    needs: [lint, test, dbt-check]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3  # pin SHA: docker/setup-buildx-action
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3  # pin SHA: docker/login-action
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (PR) / Build and push (main)
+        uses: docker/build-push-action@v6  # pin SHA: docker/build-push-action
+        with:
+          context: .
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ghcr.io/${{ github.repository_owner }}/ai-healthcare-pipeline:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
