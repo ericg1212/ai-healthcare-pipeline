@@ -50,3 +50,7 @@ Thumbs.db
 data/
 synthetic_data/
 output/
+logs/
+
+# Large binaries
+data_ingestion/*.jar
