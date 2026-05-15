@@ -1,0 +1,39 @@
+name: Feature Request
+description: Suggest an enhancement or new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What gap or limitation is this addressing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - ai_layer (enricher / judge / rules engine)
+        - data_ingestion
+        - dbt_pipeline
+        - dagster_pipelines
+        - RAG / vector store
+        - Dashboard (Streamlit)
+        - CI / security
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

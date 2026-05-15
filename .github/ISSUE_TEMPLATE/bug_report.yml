@@ -1,0 +1,48 @@
+name: Bug Report
+description: Something isn't working correctly
+labels: [bug]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run `python -m ai_layer.run_enrichment --record-type condition --limit 5`
+        2. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - ai_layer (enricher / judge)
+        - data_ingestion (FHIR parser / S3 / Snowflake loader)
+        - dbt_pipeline (staging / mart models)
+        - dagster_pipelines (assets / orchestration)
+        - CI / GitHub Actions
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error output
+      render: shell
