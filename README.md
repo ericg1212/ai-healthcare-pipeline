@@ -31,27 +31,38 @@ Most healthcare AI pipelines treat enrichment as a black box — the model outpu
 
 ## AI Layer
 
-Four components run on every record, in sequence:
+Four components run on every record, in sequence. Components 1 and 2 are live; 3 and 4 are in development.
 
-**1. Claude Enrichment**
-Claude API assigns a risk level (High / Medium / Low), a plain-language clinical summary, and a confidence score (0.0–1.0). Confidence below 0.70 routes the record to Review without proceeding further.
+**1. Claude Enrichment** ✓ Live
+Each condition and medication record is scored across 6 clinical quality dimensions. Claude is called via `tool_use` — structured output only, no free-text parsing. The system prompt (~2,000 tokens) is prompt-cached, so calls 2–N in a batch cost ~10% of the first call's input token price.
 
-**2. LLM-as-Judge**
-A second Claude call receives the original record and the first enrichment output, then independently validates consistency. Disagreement between the two calls routes the record to Review.
-
-**3. Structured Rules Engine (deterministic Python — 6 categories)**
-
-| Category | Logic |
+| Category | What It Measures |
 |---|---|
-| Diabetes & Metabolic | HbA1c threshold flags |
-| Cardiovascular | ER visit counts, risk flag patterns |
-| Medication Safety | Medication gap detection |
-| Care Gaps | Missing referrals, absent follow-ups |
-| Data Completeness | Missing fields, invalid codes |
-| Mental Health & Behavioral | Depression/anxiety (F32.x, F41.x) no referral → flag; opioid (F11.x) no MAT → high risk; psychiatric med no mental health ICD → flag; multiple psych meds no specialist → flag |
+| `diagnosis_specificity` | ICD-10 code specificity — 7-char codes score high, 3-char catch-alls score low |
+| `clinical_urgency` | Implied acuity — acute/life-threatening vs. stable chronic vs. preventive |
+| `coding_accuracy` | Description-to-code alignment — catches mismatches between free text and coded values |
+| `medication_appropriateness` | Whether the medication is clinically reasonable given the record context |
+| `drug_condition_alignment` | Recognized drug-condition pairing — metformin + T2D, lisinopril + hypertension, etc. |
+| `comorbidity_risk` | Multi-condition risk signal — T2D + CKD, metabolic syndrome clusters |
 
-**4. Routing**
-Any of the following sends a record to Review: confidence < 0.70, LLM-as-Judge disagreement, rules engine conflict with Claude output. Agreement on all three → Gold.
+Each category returns a score (0.0–1.0) and a one-sentence rationale citing the specific code or clinical pattern. `overall_confidence` is a weighted average: `diagnosis_specificity` and `coding_accuracy` at 1.5×, all others at 1×. A Pydantic `model_validator` enforces that `overall_confidence` cannot diverge more than 0.25 from the category average — invalid enrichments raise at parse time, not silently downstream.
+
+**2. LLM-as-Judge** ✓ Live
+A second Claude call audits the enrichment result. The judge receives scores only — rationale is hidden to prevent anchoring bias. Five disagreement triggers are defined:
+
+1. **Inflated score** — category ≥ 0.85 on a Synthea record with a 3-char ICD-10 code or generic description
+2. **Deflated score** — category ≤ 0.25 on a well-known chronic condition or textbook first-line medication
+3. **Internal inconsistency** — `coding_accuracy ≥ 0.8` with `diagnosis_specificity ≤ 0.4`, or `medication_appropriateness ≥ 0.85` with `drug_condition_alignment ≤ 0.3`
+4. **Overall drift** — `overall_confidence` diverges more than 0.20 from the simple category average
+5. **Flat scoring** — all 6 scores within 0.05 of each other (enricher was not discriminating)
+
+When the judge disagrees, it returns `corrected_confidence`, the specific `disagreement_categories`, and a one-sentence clinical reason. Both Claude calls use prompt caching on their respective system prompts.
+
+**3. Structured Rules Engine** *(in development)*
+Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to Claude on every record.
+
+**4. Routing** *(in development)*
+LLM-as-Judge disagreement or rules engine conflict → Review queue with explainable reason. Full agreement → Gold layer.
 
 ---
 
@@ -119,21 +130,32 @@ Synthea (Python FHIR R4 generator)
 ```
 ai-healthcare-pipeline/
 ├── data_ingestion/
-│   ├── fhir_generator.py       # Synthea synthetic record generation
-│   ├── fhir_parser.py          # Parse FHIR R4 JSON → structured dicts
-│   └── load_to_snowflake.py    # S3 upload + Snowflake COPY INTO
+│   ├── fhir_generator.py       # Synthea JAR wrapper — 226 FHIR R4 patient bundles
+│   ├── fhir_parser.py          # Parse FHIR R4 JSON → PERSON/CONDITION/MEDICATION/ENCOUNTER
+│   └── load_to_snowflake.py    # S3 upload + Snowflake COPY INTO (25,958 records)
 ├── ai_layer/
-│   ├── enrichment.py           # Claude enrichment: risk, summary, confidence
-│   ├── llm_judge.py            # LLM-as-Judge: validates enrichment output
-│   └── rules_engine.py         # Structured Rules Engine: 6 categories
+│   ├── models.py               # Pydantic schemas: ConditionRecord, MedicationRecord,
+│   │                           #   EnrichmentResult (6 CategoryScore fields + validator),
+│   │                           #   JudgeVerdict (5 triggers + corrected_confidence)
+│   ├── enricher.py             # Claude enrichment — tool_use structured output,
+│   │                           #   prompt caching, 6-category scoring, enrich_batch()
+│   ├── judge.py                # LLM-as-Judge — blind review, 5 disagreement triggers,
+│   │                           #   corrected_confidence, judge_batch()
+│   └── run_enrichment.py       # CLI entry: Snowflake staging → enrich → judge → JSON
+│                               #   usage: python -m ai_layer.run_enrichment --limit 10
 ├── dbt_pipeline/
 │   ├── models/
-│   │   ├── staging/            # Bronze → Silver
-│   │   └── marts/              # Gold + Review split
+│   │   ├── staging/            # stg_person, stg_condition, stg_medication, stg_encounter
+│   │   └── marts/              # Gold + Review split (in development)
 │   └── dbt_project.yml
-├── dagster_pipelines/          # Orchestration assets and jobs
+├── dagster_pipelines/
+│   ├── assets.py               # 6 SDAs: fhir_s3_upload → snowflake_raw_tables →
+│   │                           #   dbt_staging_models → condition_enrichments +
+│   │                           #   medication_enrichments → ai_enrichment_verdicts
+│   └── definitions.py          # Dagster Definitions entry point
+├── workspace.yaml              # dagster dev -m dagster_pipelines
 ├── quality/                    # Great Expectations checkpoints
-├── streamlit_app/              # Dashboard
+├── streamlit_app/              # Dashboard (in development)
 └── tests/                      # pytest unit tests
 ```
 
