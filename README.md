@@ -33,33 +33,9 @@ A record that passes one but not the other still routes to Review. Both must agr
 
 ---
 
-## Scale
-
-| Metric | Value |
-|---|---|
-| Patient records | 226 synthetic FHIR R4 patients |
-| Total clinical records | 25,958 (conditions + medications + encounters) |
-| AI enrichment categories | 6 per record |
-| Confidence threshold | 0.70 (configurable) |
-| Rules engine categories | 6 deterministic clinical domains |
-| Validation gate | Dual — LLM-as-Judge + Rules Engine |
-
----
-
-## What This Measures
-
-| Question | Why it matters |
-|---|---|
-| Can AI enrichment reliably flag high-risk patients? | Proves Claude output is actionable, not just generative |
-| Where do AI and deterministic rules agree vs. conflict? | Conflict cases surface edge cases requiring clinical judgment |
-| What percentage of records auto-route to Gold vs. Review? | Quantifiable finding — the headline output of this pipeline |
-| What drives review queue volume by category? | Identifies which clinical domain generates the most AI ambiguity |
-
----
-
 ## AI Layer
 
-Four components run on every record. Components 1 and 2 are live; 3 and 4 are Phase 2.
+Four components run on every record. Components 1, 2, and 3 are live; 4 is Phase 2.
 
 **1. Claude Enrichment** ✓ Live
 
@@ -131,6 +107,19 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 
 ---
 
+## Scale
+
+| Metric | Value |
+|---|---|
+| Patient records | 226 synthetic FHIR R4 patients |
+| Total clinical records | 25,958 (conditions + medications + encounters) |
+| AI enrichment categories | 6 per record |
+| Confidence threshold | 0.70 (configurable) |
+| Rules engine categories | 6 deterministic clinical domains |
+| Validation gate | Dual — LLM-as-Judge + Rules Engine |
+
+---
+
 ## Stack
 
 | Layer | Technology |
@@ -157,8 +146,6 @@ Synthea (Python FHIR R4 generator)
          ↓  COPY INTO
   Snowflake RAW layer
          ↓
-  Dagster orchestration
-         ↓
   dbt (Bronze → Silver staging)
          ↓
 ┌─────────────────────────────────┐
@@ -182,6 +169,8 @@ Synthea (Python FHIR R4 generator)
   Snowflake GOLD + REVIEW marts
          ↓
   dbt (mart layer)
+         ↓
+  Dagster (orchestrates full asset graph)
          ↓
   Streamlit dashboard (Phase 2)
 ```
@@ -218,7 +207,6 @@ ai-healthcare-pipeline/
 │   │                           #   medication_enrichments → ai_enrichment_verdicts
 │   └── definitions.py          # Dagster Definitions entry point
 ├── workspace.yaml              # dagster dev -m dagster_pipelines
-├── quality/                    # Great Expectations checkpoints
 ├── streamlit_app/              # Dashboard (Phase 2)
 └── tests/                      # pytest unit tests
 ```
