@@ -1,4 +1,4 @@
-# AI-Enriched Clinical Risk Pipeline
+# AI Clinical Documentation Intelligence Pipeline
 
 [![CI](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
@@ -12,9 +12,22 @@
 [![AWS S3](https://img.shields.io/badge/AWS_S3-232F3E?logo=amazonaws&logoColor=white)](https://aws.amazon.com/s3/)
 [![FHIR R4](https://img.shields.io/badge/FHIR-R4-orange)](https://hl7.org/fhir/R4/)
 
-Most healthcare AI pipelines treat enrichment as a black box — the model outputs a risk level, and that's the end of the audit trail. This pipeline makes the AI layer auditable: confidence scores flag uncertainty, a deterministic rules engine cross-validates every Claude output, and any disagreement or low-confidence record routes to a human review queue rather than downstream consumption. The result is a two-tier output — a **Gold layer** you can trust for automated action and a **Review layer** with an explainable reason for every flagged record.
+Clinical documentation gaps are the leading driver of prior authorization denials and downstream revenue loss — yet most AI enrichment pipelines produce a risk score with no audit trail. This pipeline builds the governance layer that's missing: every Claude output is cross-validated by a deterministic rules engine, confidence scores flag uncertainty before it reaches production, and any conflict routes to a human review queue with an explainable reason. The result is a two-tier output — a **Gold layer** you can trust for automated action and a **Review layer** with a traceable reason for every flagged record.
 
-**Key design principle:** Claude and the rules engine must agree for a record to pass to Gold. If they conflict, the record routes to Review automatically.
+**Key design principle:** Claude and the rules engine must agree for a record to pass to Gold. Conflict or low confidence → Review, automatically, with a reason.
+
+---
+
+## Scale
+
+| Metric | Value |
+|---|---|
+| Patient records | 226 synthetic FHIR R4 patients |
+| Total clinical records | 25,958 (conditions + medications + encounters) |
+| AI enrichment categories | 6 per record |
+| Confidence threshold | 0.70 (configurable) |
+| Rules engine categories | 6 deterministic clinical domains |
+| Validation gate | Dual — LLM-as-Judge + Rules Engine |
 
 ---
 
@@ -23,17 +36,18 @@ Most healthcare AI pipelines treat enrichment as a black box — the model outpu
 | Question | Why it matters |
 |---|---|
 | Can AI enrichment reliably flag high-risk patients? | Proves Claude output is actionable, not just generative |
-| Where do AI and deterministic rules agree vs. conflict? | Conflict cases surface the edge cases that require clinical judgment |
+| Where do AI and deterministic rules agree vs. conflict? | Conflict cases surface edge cases requiring clinical judgment |
 | What percentage of records auto-route to Gold vs. Review? | Quantifiable finding — the headline output of this pipeline |
-| What drives review queue volume by category? | Tells you which clinical domain generates the most AI ambiguity |
+| What drives review queue volume by category? | Identifies which clinical domain generates the most AI ambiguity |
 
 ---
 
 ## AI Layer
 
-Four components run on every record, in sequence. Components 1 and 2 are live; 3 and 4 are in development.
+Four components run on every record. Components 1 and 2 are live; 3 and 4 are Phase 2.
 
 **1. Claude Enrichment** ✓ Live
+
 Each condition and medication record is scored across 6 clinical quality dimensions. Claude is called via `tool_use` — structured output only, no free-text parsing. The system prompt (~2,000 tokens) is prompt-cached, so calls 2–N in a batch cost ~10% of the first call's input token price.
 
 | Category | What It Measures |
@@ -48,6 +62,7 @@ Each condition and medication record is scored across 6 clinical quality dimensi
 Each category returns a score (0.0–1.0) and a one-sentence rationale citing the specific code or clinical pattern. `overall_confidence` is a weighted average: `diagnosis_specificity` and `coding_accuracy` at 1.5×, all others at 1×. A Pydantic `model_validator` enforces that `overall_confidence` cannot diverge more than 0.25 from the category average — invalid enrichments raise at parse time, not silently downstream.
 
 **2. LLM-as-Judge** ✓ Live
+
 A second Claude call audits the enrichment result. The judge receives scores only — rationale is hidden to prevent anchoring bias. Five disagreement triggers are defined:
 
 1. **Inflated score** — category ≥ 0.85 on a Synthea record with a 3-char ICD-10 code or generic description
@@ -58,11 +73,13 @@ A second Claude call audits the enrichment result. The judge receives scores onl
 
 When the judge disagrees, it returns `corrected_confidence`, the specific `disagreement_categories`, and a one-sentence clinical reason. Both Claude calls use prompt caching on their respective system prompts.
 
-**3. Structured Rules Engine** *(in development)*
-Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to Claude on every record.
+**3. Structured Rules Engine** — Phase 2
 
-**4. Routing** *(in development)*
-LLM-as-Judge disagreement or rules engine conflict → Review queue with explainable reason. Full agreement → Gold layer.
+Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to Claude on every record. Flag aggregation rule: HIGH if `flags_fired ≥ 2` OR any Medication Safety flag fires.
+
+**4. Gold / Review Routing** — Phase 2
+
+LLM-as-Judge disagreement or rules engine conflict → Review queue with explainable reason. Full agreement → Gold layer. Three Gold record states: enriched clean, enriched + review_flag (genuine conflict), enriched + review_flag (low confidence abstention).
 
 ---
 
@@ -101,15 +118,16 @@ Synthea (Python FHIR R4 generator)
 │        AI ENRICHMENT LAYER      │
 │                                 │
 │  1. Claude Enrichment           │
-│     risk / summary / confidence │
+│     6-category scoring          │
 │     confidence < 0.70 → REVIEW  │
 │             ↓                   │
 │  2. LLM-as-Judge                │
-│     validates consistency       │
+│     blind audit, 5 triggers     │
 │     disagreement → REVIEW       │
 │             ↓                   │
 │  3. Structured Rules Engine     │
-│     6 categories, deterministic │
+│     6 clinical categories       │
+│     deterministic cross-check   │
 │     conflict → REVIEW           │
 │     agreement → GOLD            │
 └─────────────────────────────────┘
@@ -141,12 +159,13 @@ ai-healthcare-pipeline/
 │   │                           #   prompt caching, 6-category scoring, enrich_batch()
 │   ├── judge.py                # LLM-as-Judge — blind review, 5 disagreement triggers,
 │   │                           #   corrected_confidence, judge_batch()
+│   ├── rules_engine.py         # Deterministic rules — 6 clinical categories, binary flags
 │   └── run_enrichment.py       # CLI entry: Snowflake staging → enrich → judge → JSON
 │                               #   usage: python -m ai_layer.run_enrichment --limit 10
 ├── dbt_pipeline/
 │   ├── models/
 │   │   ├── staging/            # stg_person, stg_condition, stg_medication, stg_encounter
-│   │   └── marts/              # Gold + Review split (in development)
+│   │   └── marts/              # Gold + Review split (Phase 2)
 │   └── dbt_project.yml
 ├── dagster_pipelines/
 │   ├── assets.py               # 6 SDAs: fhir_s3_upload → snowflake_raw_tables →
@@ -155,16 +174,26 @@ ai-healthcare-pipeline/
 │   └── definitions.py          # Dagster Definitions entry point
 ├── workspace.yaml              # dagster dev -m dagster_pipelines
 ├── quality/                    # Great Expectations checkpoints
-├── streamlit_app/              # Dashboard (in development)
+├── streamlit_app/              # Dashboard (Phase 2)
 └── tests/                      # pytest unit tests
 ```
+
+---
+
+## Portfolio Arc
+
+| Project | Focus | Status |
+|---|---|---|
+| [Healthcare Claims Intelligence Pipeline](https://github.com/ericg1212/healthcare-claims-pipeline) | RCM retrospective — classify 257K denied claims by root cause | Complete |
+| **AI Clinical Documentation Intelligence Pipeline** | AI governance — enrich + cross-validate + route clinical records | Active |
+| P4 (planned) | Real-time denial prevention — streaming ingestion, rules-based scoring at submission | Planned |
 
 ---
 
 ## Future Enhancements
 
 **[Priority 1] RAG with Clinical Guidelines**
-Instead of Claude reasoning from training data alone, retrieve the current clinical guideline — ACC/AHA cardiovascular standards, ADA diabetes management, SAMHSA behavioral health protocols — and include it directly in the enrichment prompt. Claude then reasons against authoritative, current literature rather than potentially outdated training knowledge. Implementation requires a vector database (Pinecone) to store and retrieve guideline embeddings at inference time. Directly addresses the physician bypass question: records that pass Gold under RAG are grounded in named, dated, retrievable clinical evidence.
+Instead of Claude reasoning from training data alone, retrieve the current clinical guideline — ACC/AHA cardiovascular standards, ADA diabetes management, SAMHSA behavioral health protocols — and include it directly in the enrichment prompt. Claude then reasons against authoritative, current literature rather than potentially outdated training knowledge. Implementation requires a vector database (Pinecone) to store and retrieve guideline embeddings at inference time.
 
 **SNOMED CT / RxNorm API Validation**
 Clinical terminology verification against authoritative vocabularies at ingestion time.
