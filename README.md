@@ -73,7 +73,7 @@ A second Claude call audits the enrichment result. The judge receives scores onl
 
 When the judge disagrees, it returns `corrected_confidence`, the specific `disagreement_categories`, and a one-sentence clinical reason. Both Claude calls use prompt caching on their respective system prompts.
 
-**3. Structured Rules Engine** — Phase 2
+**3. Structured Rules Engine** ✓ Live
 
 Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to Claude on every record. Flag aggregation rule: HIGH if `flags_fired ≥ 2` OR any Medication Safety flag fires.
 
