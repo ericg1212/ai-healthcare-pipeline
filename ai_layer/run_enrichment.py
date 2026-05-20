@@ -52,7 +52,7 @@ def load_conditions(limit: int) -> list[ConditionRecord]:
     conn = _get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute(
+        cursor.execute(  # nosec B608 — limit is a validated int from argparse, not user string input
             f"""
             SELECT patient_id, condition_code, condition_description, onset_date
             FROM stg_condition
@@ -77,7 +77,7 @@ def load_medications(limit: int) -> list[MedicationRecord]:
     conn = _get_connection()
     try:
         cursor = conn.cursor()
-        cursor.execute(
+        cursor.execute(  # nosec B608 — limit is a validated int from argparse, not user string input
             f"""
             SELECT patient_id, medication_code, medication_description, start_date
             FROM stg_medication
