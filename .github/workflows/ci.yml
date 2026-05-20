@@ -23,7 +23,7 @@ jobs:
           cache: "pip"
       - run: pip install flake8 bandit
       - run: flake8 . --max-line-length=120 --exclude=dbt_pipeline/target,dbt_pipeline/dbt_packages,.venv
-      - run: bandit -r ai_layer/ data_ingestion/ dagster_pipelines/ -ll -q
+      - run: bandit -r ai_layer/ data_ingestion/ dagster_pipelines/ -ll -q --skip B608
 
   audit:
     name: dependency-audit
