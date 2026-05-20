@@ -9,7 +9,6 @@ TODO (Eric): fill in SYSTEM_PROMPT with your clinical context/guidelines.
 
 from __future__ import annotations
 
-import json
 import os
 from typing import Union
 

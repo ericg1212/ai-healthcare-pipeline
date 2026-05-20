@@ -13,5 +13,8 @@ r2 = MedicationRecord(patient_id="P002", medication_code="855332", medication_de
 print(engine.evaluate(r2))
 
 # Should flag nothing (specific ICD, normal med)
-r3 = ConditionRecord(patient_id="P003", condition_code="E11.9", condition_description="T2D no complications", onset_date=date(2022, 1, 1))
+r3 = ConditionRecord(
+    patient_id="P003", condition_code="E11.9",
+    condition_description="T2D no complications", onset_date=date(2022, 1, 1)
+)
 print(engine.evaluate(r3))
