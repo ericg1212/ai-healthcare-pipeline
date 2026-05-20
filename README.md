@@ -14,7 +14,7 @@
 
 Clinical documentation gaps are the leading driver of prior authorization denials and downstream revenue loss — a problem that CMS-0057-F now mandates health systems address with real-time decision transparency. Yet most AI enrichment pipelines produce a risk score with no audit trail. This pipeline builds the governance layer that's missing: every Claude output is cross-validated by a deterministic rules engine, confidence scores flag uncertainty before it reaches production, and any conflict routes to a human review queue with an explainable reason. The result is a two-tier output — a **Gold layer** you can trust for automated action and a **Review layer** with a traceable reason for every flagged record.
 
-**Key design principle:** Claude and the rules engine must agree for a record to pass to Gold. Conflict or low confidence → Review, automatically, with a reason.
+**Trust but verify:** Claude and the rules engine must agree for a record to pass to Gold. Conflict or low confidence → Review, automatically, with a reason.
 
 ---
 
@@ -29,7 +29,7 @@ This pipeline uses two orthogonal validators targeting different failure modes:
 | **LLM-as-Judge** | Statistical inconsistencies *within* the AI output — inflated scores, flat scoring, internal contradictions between categories |
 | **Rules Engine** | Domain violations the LLM might miss — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
 
-A record that passes one but not the other still routes to Review. Both must agree for Gold. This design survives the failure mode where a confident but wrong LLM output would otherwise pass a threshold gate unchallenged.
+Trust the model's enrichment output as a starting signal — verify it independently against a deterministic standard before it acts. A record that passes one validator but not the other still routes to Review. Both must agree for Gold. This design survives the failure mode where a confident but wrong LLM output would otherwise pass a threshold gate unchallenged.
 
 ---
 
