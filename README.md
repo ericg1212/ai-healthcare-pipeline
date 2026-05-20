@@ -90,9 +90,9 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | Synthetic data | Python FHIR R4 (Synthea) |
 | Raw storage | AWS S3 |
 | Warehouse | Snowflake |
-| Orchestration | Dagster |
-| AI enrichment | Claude API (Anthropic) |
 | Transformation | dbt |
+| AI enrichment | Claude API (Anthropic) |
+| Orchestration | Dagster |
 | Dashboard | Streamlit *(Phase 2)* |
 | CI | GitHub Actions |
 
