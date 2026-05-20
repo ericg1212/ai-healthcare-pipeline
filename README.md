@@ -93,8 +93,7 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | Orchestration | Dagster |
 | AI enrichment | Claude API (Anthropic) |
 | Transformation | dbt |
-| Data quality | Great Expectations |
-| Dashboard | Streamlit |
+| Dashboard | Streamlit *(Phase 2)* |
 | CI | GitHub Actions |
 
 ---
