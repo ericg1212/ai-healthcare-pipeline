@@ -1,16 +1,36 @@
 # Trust but Verify: AI Clinical Documentation Intelligence Pipeline
 
+<div align="center">
+
 [![CI](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline)
 [![Release](https://img.shields.io/github/v/release/ericg1212/ai-healthcare-pipeline)](https://github.com/ericg1212/ai-healthcare-pipeline/releases)
-[![Python](https://img.shields.io/badge/python-3.13-blue)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white)](https://www.snowflake.com/)
+[![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square&logo=dbt&logoColor=white)](https://www.getdbt.com/)
+[![Dagster](https://img.shields.io/badge/Dagster-4F43DD?style=flat-square&logo=dagster&logoColor=white)](https://dagster.io/)
+[![AWS S3](https://img.shields.io/badge/AWS%20S3-232F3E?style=flat-square&logo=amazonaws&logoColor=white)](https://aws.amazon.com/s3/)
+[![FHIR R4](https://img.shields.io/badge/HL7%20FHIR-R4-E8670A?style=flat-square)](https://hl7.org/fhir/R4/)
 
-[![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?logo=snowflake&logoColor=white)](https://www.snowflake.com/)
-[![dbt](https://img.shields.io/badge/dbt-FF694B?logo=dbt&logoColor=white)](https://www.getdbt.com/)
-[![Dagster](https://img.shields.io/badge/Dagster-4F43DD?logo=dagster&logoColor=white)](https://dagster.io/)
-[![AWS S3](https://img.shields.io/badge/AWS_S3-232F3E?logo=amazonaws&logoColor=white)](https://aws.amazon.com/s3/)
-[![FHIR R4](https://img.shields.io/badge/FHIR-R4-orange)](https://hl7.org/fhir/R4/)
+<br/>
+
+![Patients](https://img.shields.io/badge/Patients-226-0ea5e9?style=flat-square)
+![Records](https://img.shields.io/badge/Clinical%20Records-25%2C958-8b5cf6?style=flat-square)
+![Categories](https://img.shields.io/badge/Enrichment%20Categories-6-22c55e?style=flat-square)
+![Rules Domains](https://img.shields.io/badge/Rules%20Engine%20Domains-6-f59e0b?style=flat-square)
+
+<br/>
+
+**By [Eric Grynspan](https://www.linkedin.com/in/ericgrynspan/)** &nbsp;·&nbsp; [Portfolio](https://ericg1212.github.io) &nbsp;·&nbsp; [P2 — Denied](https://github.com/ericg1212/healthcare-claims-pipeline)
+
+</div>
+
+---
+
+> **Portfolio arc:** [P2 — Denied](https://github.com/ericg1212/healthcare-claims-pipeline) &nbsp;→&nbsp; [P3 — Trust but Verify *(this project)*](https://github.com/ericg1212/ai-healthcare-pipeline) &nbsp;→&nbsp; P4 — Cleared *(real-time denial prevention, planned)*
+
+---
 
 Clinical documentation gaps are the leading driver of prior authorization denials and downstream revenue loss — a problem that CMS-0057-F now mandates health systems address with real-time decision transparency. Yet most AI enrichment pipelines produce a risk score with no audit trail. This pipeline builds the governance layer that's missing: every Claude output is cross-validated by a deterministic rules engine, confidence scores flag uncertainty before it reaches production, and any conflict routes to a human review queue with an explainable reason. The result is a two-tier output — a **Gold layer** you can trust for automated action and a **Review layer** with a traceable reason for every flagged record.
 
