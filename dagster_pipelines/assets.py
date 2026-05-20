@@ -133,10 +133,10 @@ def dbt_staging_models(context) -> MaterializeResult:
 @asset(
     deps=["dbt_staging_models"],
     group_name="ai_enrichment",
-    compute_kind="claude",
+    compute_kind="llm",
 )
 def condition_enrichments(context) -> MaterializeResult:
-    """Run Claude enrichment on stg_condition records. Writes JSON to output/."""
+    """Run LLM enrichment on stg_condition records. Writes JSON to output/."""
     from ai_layer.enricher import enrich_batch
     from ai_layer.run_enrichment import load_conditions
 
@@ -173,10 +173,10 @@ def condition_enrichments(context) -> MaterializeResult:
 @asset(
     deps=["dbt_staging_models"],
     group_name="ai_enrichment",
-    compute_kind="claude",
+    compute_kind="llm",
 )
 def medication_enrichments(context) -> MaterializeResult:
-    """Run Claude enrichment on stg_medication records. Writes JSON to output/."""
+    """Run LLM enrichment on stg_medication records. Writes JSON to output/."""
     from ai_layer.enricher import enrich_batch
     from ai_layer.run_enrichment import load_medications
 
@@ -213,7 +213,7 @@ def medication_enrichments(context) -> MaterializeResult:
 @asset(
     deps=["condition_enrichments", "medication_enrichments"],
     group_name="ai_enrichment",
-    compute_kind="claude",
+    compute_kind="llm",
 )
 def ai_enrichment_verdicts(context) -> MaterializeResult:
     """Run LLM-as-Judge on the latest condition + medication enrichment files."""

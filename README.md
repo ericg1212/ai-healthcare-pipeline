@@ -32,9 +32,9 @@
 
 ---
 
-Clinical documentation gaps are the leading driver of prior authorization denials and downstream revenue loss — a problem that CMS-0057-F now mandates health systems address with real-time decision transparency. Yet most AI enrichment pipelines produce a risk score with no audit trail. This pipeline builds the governance layer that's missing: every Claude output is cross-validated by a deterministic rules engine, confidence scores flag uncertainty before it reaches production, and any conflict routes to a human review queue with an explainable reason. The result is a two-tier output — a **Gold layer** you can trust for automated action and a **Review layer** with a traceable reason for every flagged record.
+Clinical documentation gaps are the leading driver of prior authorization denials and downstream revenue loss — a problem that CMS-0057-F now mandates health systems address with real-time decision transparency. Yet most AI enrichment pipelines produce a risk score with no audit trail. This pipeline builds the governance layer that's missing: every LLM output is cross-validated by a deterministic rules engine, confidence scores flag uncertainty before it reaches production, and any conflict routes to a human review queue with an explainable reason. The result is a two-tier output — a **Gold layer** you can trust for automated action and a **Review layer** with a traceable reason for every flagged record.
 
-**Trust but verify:** Claude and the rules engine must agree for a record to pass to Gold. Conflict or low confidence → Review, automatically, with a reason.
+**Trust but verify:** The LLM and the rules engine must agree for a record to pass to Gold. Conflict or low confidence → Review, automatically, with a reason.
 
 ---
 
@@ -57,9 +57,9 @@ Trust the model's enrichment output as a starting signal — verify it independe
 
 Four components run on every record. Components 1, 2, and 3 are live; 4 is Phase 2.
 
-**1. Claude Enrichment** ✓ Live
+**1. LLM Enrichment** ✓ Live
 
-Each condition and medication record is scored across 6 clinical quality dimensions. Claude is called via `tool_use` — structured output only, no free-text parsing. The system prompt (~2,000 tokens) is prompt-cached, so calls 2–N in a batch cost ~10% of the first call's input token price.
+Each condition and medication record is scored across 6 clinical quality dimensions. The LLM is called via `tool_use` — structured output only, no free-text parsing. The system prompt (~2,000 tokens) is prompt-cached, so calls 2–N in a batch cost ~10% of the first call's input token price.
 
 | Category | What It Measures |
 |---|---|
@@ -74,7 +74,7 @@ Each category returns a score (0.0–1.0) and a one-sentence rationale citing th
 
 **2. LLM-as-Judge** ✓ Live
 
-A second Claude call audits the enrichment result. The judge receives scores only — rationale is hidden to prevent anchoring bias. Five disagreement triggers are defined:
+A second LLM call audits the enrichment result. The judge receives scores only — rationale is hidden to prevent anchoring bias. Five disagreement triggers are defined:
 
 1. **Inflated score** — category ≥ 0.85 on a Synthea record with a 3-char ICD-10 code or generic description
 2. **Deflated score** — category ≤ 0.25 on a well-known chronic condition or textbook first-line medication
@@ -82,11 +82,11 @@ A second Claude call audits the enrichment result. The judge receives scores onl
 4. **Overall drift** — `overall_confidence` diverges more than 0.20 from the simple category average
 5. **Flat scoring** — all 6 scores within 0.05 of each other (enricher was not discriminating)
 
-When the judge disagrees, it returns `corrected_confidence`, the specific `disagreement_categories`, and a one-sentence clinical reason. Both Claude calls use prompt caching on their respective system prompts.
+When the judge disagrees, it returns `corrected_confidence`, the specific `disagreement_categories`, and a one-sentence clinical reason. Both LLM calls use prompt caching on their respective system prompts.
 
 **3. Structured Rules Engine** ✓ Live
 
-Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to Claude on every record. Flag aggregation rule: HIGH if `flags_fired ≥ 2` OR any Medication Safety flag fires.
+Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to the LLM on every record. Flag aggregation rule: HIGH if `flags_fired ≥ 2` OR any Medication Safety flag fires.
 
 **4. Gold / Review Routing** — Phase 2
 
@@ -97,7 +97,7 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 ## Design Decisions
 
 **Why `tool_use` instead of free-text parsing?**
-Structured output enforced at the API level — Claude cannot return malformed JSON or skip a required field. Pydantic validates on ingestion; invalid enrichments raise at parse time, not silently downstream. This eliminates an entire class of data quality bugs.
+Structured output enforced at the API level — the LLM cannot return malformed JSON or skip a required field. Pydantic validates on ingestion; invalid enrichments raise at parse time, not silently downstream. This eliminates an entire class of data quality bugs.
 
 **Why prompt caching?**
 The system prompt is ~2,000 tokens and identical across every record in a batch. Caching it means calls 2–N cost ~10% of the first call's input token price. At batch scale this is a 5–10× cost reduction with zero quality tradeoff.
@@ -108,7 +108,7 @@ Allowing `overall_confidence` to diverge arbitrarily from the category average c
 **Why rationale hidden from the Judge?**
 Anchoring bias: if the Judge sees the enricher's reasoning, it tends to rationalize rather than audit. Scores-only input forces the Judge to evaluate statistical consistency independently, which is the only thing it can do objectively.
 
-**Why deterministic rules alongside Claude?**
+**Why deterministic rules alongside the LLM?**
 LLMs are probabilistic — the same record can score differently across runs. For Medication Safety and high-risk comorbidity flags (T2D + CKD, polypharmacy), deterministic enforcement is non-negotiable. The rules engine provides a stable, auditable floor that doesn't drift.
 
 ---
@@ -148,7 +148,7 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 | Raw storage | AWS S3 |
 | Warehouse | Snowflake |
 | Transformation | dbt |
-| AI enrichment | Claude API (Anthropic) |
+| AI enrichment | Anthropic API |
 | Orchestration | Dagster |
 | Dashboard | Streamlit *(Phase 2)* |
 | CI | GitHub Actions |
@@ -171,7 +171,7 @@ Synthea (Python FHIR R4 generator)
 ┌─────────────────────────────────┐
 │        AI ENRICHMENT LAYER      │
 │                                 │
-│  1. Claude Enrichment           │
+│  1. LLM Enrichment              │
 │     6-category scoring          │
 │     confidence < 0.70 → REVIEW  │
 │             ↓                   │
@@ -209,7 +209,7 @@ ai-healthcare-pipeline/
 │   ├── models.py               # Pydantic schemas: ConditionRecord, MedicationRecord,
 │   │                           #   EnrichmentResult (6 CategoryScore fields + validator),
 │   │                           #   JudgeVerdict (5 triggers + corrected_confidence)
-│   ├── enricher.py             # Claude enrichment — tool_use structured output,
+│   ├── enricher.py             # LLM enrichment — tool_use structured output,
 │   │                           #   prompt caching, 6-category scoring, enrich_batch()
 │   ├── judge.py                # LLM-as-Judge — blind review, 5 disagreement triggers,
 │   │                           #   corrected_confidence, judge_batch()
@@ -246,7 +246,7 @@ ai-healthcare-pipeline/
 ## Future Enhancements
 
 **[Priority 1] RAG with Clinical Guidelines**
-Instead of Claude reasoning from training data alone, retrieve the current clinical guideline — ACC/AHA cardiovascular standards, ADA diabetes management, SAMHSA behavioral health protocols — and include it directly in the enrichment prompt. Claude then reasons against authoritative, current literature rather than potentially outdated training knowledge. Implementation requires a vector database (Pinecone) to store and retrieve guideline embeddings at inference time.
+Instead of the LLM reasoning from training data alone, retrieve the current clinical guideline — ACC/AHA cardiovascular standards, ADA diabetes management, SAMHSA behavioral health protocols — and include it directly in the enrichment prompt. The LLM then reasons against authoritative, current literature rather than potentially outdated training knowledge. Implementation requires a vector database (Pinecone) to store and retrieve guideline embeddings at inference time.
 
 **SNOMED CT / RxNorm API Validation**
 Clinical terminology verification against authoritative vocabularies at ingestion time.
