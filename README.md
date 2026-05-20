@@ -1,4 +1,4 @@
-# AI Clinical Documentation Intelligence Pipeline
+# Trust but Verify: AI Clinical Documentation Intelligence Pipeline
 
 [![CI](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
@@ -217,9 +217,9 @@ ai-healthcare-pipeline/
 
 | Project | Focus | Status |
 |---|---|---|
-| [Healthcare Claims Intelligence Pipeline](https://github.com/ericg1212/healthcare-claims-pipeline) | RCM retrospective — classify 257K denied claims by root cause | Complete |
-| **AI Clinical Documentation Intelligence Pipeline** | AI governance — enrich + cross-validate + route clinical records | Active |
-| P4 (planned) | Real-time denial prevention — streaming ingestion, rules-based scoring at submission | Planned |
+| [Denied: Healthcare Claims Intelligence Pipeline](https://github.com/ericg1212/healthcare-claims-pipeline) | RCM retrospective — classify 257K denied claims by root cause | Complete |
+| **Trust but Verify: AI Clinical Documentation Intelligence Pipeline** | AI governance — enrich + cross-validate + route clinical records | Active |
+| Cleared: Real-Time Prior Authorization Prevention Pipeline *(planned)* | Real-time denial prevention — streaming ingestion, rules-based scoring at submission | Planned |
 
 ---
 
