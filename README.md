@@ -1,11 +1,10 @@
-# Trust but Verify: AI Clinical Documentation Intelligence Pipeline
-
-<div align="center">
+# Trust but Verify: Clinical AI Governance Engine
 
 [![CI](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline)
 [![Release](https://img.shields.io/github/v/release/ericg1212/ai-healthcare-pipeline)](https://github.com/ericg1212/ai-healthcare-pipeline/releases)
+[![dbt Docs](https://img.shields.io/badge/dbt%20Docs-live-FF694B?style=flat-square&logo=dbt&logoColor=white)](https://ericg1212.github.io/ai-healthcare-pipeline/)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white)](https://www.snowflake.com/)
 [![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square&logo=dbt&logoColor=white)](https://www.getdbt.com/)
@@ -13,22 +12,24 @@
 [![AWS S3](https://img.shields.io/badge/AWS%20S3-232F3E?style=flat-square&logo=amazonaws&logoColor=white)](https://aws.amazon.com/s3/)
 [![FHIR R4](https://img.shields.io/badge/HL7%20FHIR-R4-E8670A?style=flat-square)](https://hl7.org/fhir/R4/)
 
-<br/>
-
 ![Patients](https://img.shields.io/badge/Patients-226-0ea5e9?style=flat-square)
 ![Records](https://img.shields.io/badge/Clinical%20Records-25%2C958-8b5cf6?style=flat-square)
 ![Categories](https://img.shields.io/badge/Enrichment%20Categories-6-22c55e?style=flat-square)
 ![Rules Domains](https://img.shields.io/badge/Rules%20Engine%20Domains-6-f59e0b?style=flat-square)
 
-<br/>
-
-**By [Eric Grynspan](https://www.linkedin.com/in/ericgrynspan/)** &nbsp;·&nbsp; [Portfolio](https://ericg1212.github.io) &nbsp;·&nbsp; [P2 — Denied](https://github.com/ericg1212/healthcare-claims-pipeline)
-
-</div>
+**By [Eric Grynspan](https://www.linkedin.com/in/ericgrynspan/)** &nbsp;·&nbsp; [Portfolio](https://ericg1212.github.io) &nbsp;·&nbsp; [← P2 — Denied](https://github.com/ericg1212/healthcare-claims-pipeline)
 
 ---
 
-> **Portfolio arc:** [P2 — Denied](https://github.com/ericg1212/healthcare-claims-pipeline) &nbsp;→&nbsp; [P3 — Trust but Verify *(this project)*](https://github.com/ericg1212/ai-healthcare-pipeline) &nbsp;→&nbsp; P4 — Cleared *(real-time denial prevention, planned)*
+## Portfolio Arc
+
+P2 classified denials retrospectively. P3 adds AI governance. P4 prevents the denial before it happens.
+
+| Project | Focus | Status |
+|---|---|---|
+| [P2 — Denied](https://github.com/ericg1212/healthcare-claims-pipeline) | Retrospective denial classification — separate 27K systematic denials with an upstream fix from 229K documentation failures requiring a different intervention | Live |
+| **[P3 — Trust but Verify *(this project)*](https://github.com/ericg1212/ai-healthcare-pipeline)** | Clinical AI governance — LLM enrichment + rules engine cross-validation, every routing decision explainable | Live |
+| P4 — Cleared *(planned)* | Real-time prior auth prevention — RAG-enhanced payer criteria matching at point of submission, streaming ingestion | Planned |
 
 ---
 
@@ -230,16 +231,6 @@ ai-healthcare-pipeline/
 ├── streamlit_app/              # Dashboard (Phase 2)
 └── tests/                      # pytest unit tests
 ```
-
----
-
-## Portfolio Arc
-
-| Project | Focus | Status |
-|---|---|---|
-| [Denied: Healthcare Claims Intelligence Pipeline](https://github.com/ericg1212/healthcare-claims-pipeline) | RCM retrospective — classify 257K denied claims by root cause | Complete |
-| **Trust but Verify: AI Clinical Documentation Intelligence Pipeline** | AI governance — enrich + cross-validate + route clinical records | Active |
-| Cleared: Real-Time Prior Authorization Prevention Pipeline *(planned)* | Real-time denial prevention — streaming ingestion, rules-based scoring at submission | Planned |
 
 ---
 
