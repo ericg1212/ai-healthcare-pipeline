@@ -32,5 +32,5 @@ flake8>=7.0.0
 # Utilities
 python-dotenv>=1.0.0
 requests>=2.31.0
-pandas>=2.1.0
+pandas>=3.0.3
 pydantic>=2.0.0
