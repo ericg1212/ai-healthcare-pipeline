@@ -9,7 +9,7 @@ snowflake-connector-python>=3.6.0
 
 # Orchestration
 dagster>=1.9.0
-dagster-webserver>=1.9.0
+dagster-webserver>=1.13.6
 dagster-dbt>=0.25.0
 
 # Transformation
