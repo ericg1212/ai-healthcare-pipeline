@@ -8,6 +8,8 @@ Asset graph (left to right):
                 ├── condition_enrichments
                 ├── medication_enrichments
                       └── ai_enrichment_verdicts
+                              └── gold_routing
+                                    └── dbt_mart_models
 
 Run locally:
   dagster dev -m dagster_pipelines
@@ -251,4 +253,173 @@ def ai_enrichment_verdicts(context) -> MaterializeResult:
             "errors": MetadataValue.int(len(errors)),
             "output_file": MetadataValue.path(str(out_path)),
         }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Asset 7: Gold routing — Rules Engine + routing logic → Snowflake
+# ---------------------------------------------------------------------------
+
+@asset(
+    deps=["ai_enrichment_verdicts"],
+    group_name="gold",
+    compute_kind="python",
+)
+def gold_routing(context) -> MaterializeResult:
+    """Run Rules Engine + routing on enrichment results. Writes GOLD_ROUTING_STAGE to Snowflake."""
+    import snowflake.connector
+
+    from ai_layer.models import EnrichmentResult, JudgeVerdict
+    from ai_layer.router import route
+    from ai_layer.rules_engine import RulesEngine
+    from ai_layer.run_enrichment import load_conditions, load_medications
+
+    engine = RulesEngine()
+
+    # Load original staging records to run Rules Engine
+    limit = int(os.getenv("ENRICHMENT_LIMIT", "50"))
+    cond_records = load_conditions(limit)
+    med_records = load_medications(limit)
+    all_records = cond_records + med_records
+
+    rules_by_key: dict[tuple[str, str], object] = {
+        (r.patient_id, getattr(r, "condition_code", None) or getattr(r, "medication_code", None)): engine.evaluate(r)
+        for r in all_records
+    }
+
+    # Load latest enrichment files
+    def _load_latest(prefix: str, model_cls):
+        files = sorted(OUTPUT_DIR.glob(f"{prefix}_*.json"), reverse=True)
+        if not files:
+            return []
+        raw = json.loads(files[0].read_text())
+        return [model_cls(**r) for r in raw]
+
+    enrichments: list[EnrichmentResult] = (
+        _load_latest("condition_enrichments", EnrichmentResult)
+        + _load_latest("medication_enrichments", EnrichmentResult)
+    )
+    verdicts: list[JudgeVerdict] = _load_latest("judge_verdicts", JudgeVerdict)
+
+    verdicts_by_key = {(v.patient_id, v.record_code): v for v in verdicts}
+
+    decisions = []
+    skipped = 0
+    for enrichment in enrichments:
+        key = (enrichment.patient_id, enrichment.record_code)
+        verdict = verdicts_by_key.get(key)
+        rules = rules_by_key.get(key)
+        if verdict is None or rules is None:
+            skipped += 1
+            continue
+        decisions.append(route(enrichment, verdict, rules))
+
+    context.log.info(
+        f"Routed {len(decisions)} records "
+        f"({skipped} skipped — no matching verdict or rules result)"
+    )
+
+    # Write to Snowflake GOLD_ROUTING_STAGE
+    conn = snowflake.connector.connect(
+        account=os.environ["SNOWFLAKE_ACCOUNT"],
+        user=os.environ["SNOWFLAKE_USER"],
+        password=os.environ["SNOWFLAKE_PASSWORD"],
+        database=os.environ["SNOWFLAKE_DATABASE"],
+        schema="STAGING_STAGING",
+        warehouse=os.environ["SNOWFLAKE_WAREHOUSE"],
+        role=os.environ["SNOWFLAKE_ROLE"],
+    )
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS GOLD_ROUTING_STAGE (
+                patient_id      VARCHAR,
+                record_code     VARCHAR,
+                record_type     VARCHAR,
+                rules_risk      VARCHAR,
+                enricher_confidence FLOAT,
+                enricher_risk   VARCHAR,
+                judge_agrees    BOOLEAN,
+                corrected_confidence FLOAT,
+                routing_decision VARCHAR,
+                review_flag     BOOLEAN,
+                routing_reason  VARCHAR,
+                cost_usd        FLOAT,
+                processed_at    TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+            )
+        """)
+        cursor.execute("TRUNCATE TABLE GOLD_ROUTING_STAGE")
+
+        rows = [
+            (
+                d.patient_id, d.record_code, d.record_type,
+                d.rules_risk, d.enricher_confidence, d.enricher_risk,
+                d.judge_agrees, d.corrected_confidence,
+                d.routing_decision, d.review_flag, d.routing_reason,
+                d.cost_usd,
+            )
+            for d in decisions
+        ]
+        cursor.executemany(
+            """
+            INSERT INTO GOLD_ROUTING_STAGE (
+                patient_id, record_code, record_type,
+                rules_risk, enricher_confidence, enricher_risk,
+                judge_agrees, corrected_confidence,
+                routing_decision, review_flag, routing_reason,
+                cost_usd
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            rows,
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    review_count = sum(1 for d in decisions if d.review_flag)
+    clean_count = len(decisions) - review_count
+    total_cost = sum(d.cost_usd for d in decisions)
+
+    return MaterializeResult(
+        metadata={
+            "total_routed": MetadataValue.int(len(decisions)),
+            "gold_clean": MetadataValue.int(clean_count),
+            "gold_review": MetadataValue.int(review_count),
+            "skipped": MetadataValue.int(skipped),
+            "total_cost_usd": MetadataValue.float(round(total_cost, 4)),
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Asset 8: dbt mart models — builds mart_patient_risk_scores from GOLD_ROUTING_STAGE
+# ---------------------------------------------------------------------------
+
+@asset(
+    deps=["gold_routing"],
+    group_name="gold",
+    compute_kind="dbt",
+)
+def dbt_mart_models(context) -> MaterializeResult:
+    """Run dbt marts layer (mart_patient_risk_scores)."""
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "dbt", "run",
+            "--select", "marts",
+            "--project-dir", str(DBT_PROJECT_DIR),
+            "--profiles-dir", str(DBT_PROJECT_DIR),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=str(DBT_PROJECT_DIR),
+    )
+
+    context.log.info(result.stdout)
+    if result.returncode != 0:
+        context.log.error(result.stderr)
+        raise RuntimeError(f"dbt run failed:\n{result.stderr}")
+
+    completed = result.stdout.count("OK created sql table")
+    return MaterializeResult(
+        metadata={"models_materialized": MetadataValue.int(completed)}
     )

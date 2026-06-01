@@ -1,0 +1,10 @@
+version: 2
+
+sources:
+  - name: gold_stage
+    database: AI_HEALTHCARE
+    schema: STAGING_STAGING
+    tables:
+      - name: routing_results
+        identifier: GOLD_ROUTING_STAGE
+        description: "Raw routing decisions written by the gold_routing Dagster asset."

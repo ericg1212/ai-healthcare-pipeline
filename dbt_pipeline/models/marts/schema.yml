@@ -1,0 +1,43 @@
+version: 2
+
+models:
+  - name: mart_patient_risk_scores
+    description: "Gold layer — routed AI enrichment scores per patient record with routing decision and review flag."
+    columns:
+      - name: patient_id
+        tests:
+          - not_null
+      - name: record_code
+        tests:
+          - not_null
+      - name: record_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["condition", "medication"]
+      - name: rules_risk
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["HIGH", "LOW"]
+      - name: enricher_risk
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["HIGH", "LOW"]
+      - name: routing_decision
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - GOLD_CLEAN
+                - GOLD_REVIEW_CONFLICT
+                - GOLD_REVIEW_LOW_CONFIDENCE
+      - name: review_flag
+        tests:
+          - not_null
+      - name: risk_category
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["HIGH_RISK", "LOW_RISK", "REVIEW_QUEUE"]
