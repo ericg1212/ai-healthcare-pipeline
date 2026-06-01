@@ -1,12 +1,10 @@
 """Tests for Gold routing logic."""
 
-from datetime import date, datetime
-
-import pytest
+from datetime import datetime
 
 from ai_layer.models import CategoryScore, EnrichmentResult, JudgeVerdict
 from ai_layer.router import CONFIDENCE_THRESHOLD, apply_rules_risk, route
-from ai_layer.rules_engine import RulesEngine, RulesEngineResult
+from ai_layer.rules_engine import RulesEngineResult
 
 
 # ---------------------------------------------------------------------------
