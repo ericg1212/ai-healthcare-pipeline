@@ -129,31 +129,28 @@ def dbt_staging_models(context) -> MaterializeResult:
 
 
 # ---------------------------------------------------------------------------
-# Asset 4: Enrich condition records
+# Helper: shared enrichment logic for condition + medication assets
 # ---------------------------------------------------------------------------
 
-@asset(
-    deps=["dbt_staging_models"],
-    group_name="ai_enrichment",
-    compute_kind="llm",
-)
-def condition_enrichments(context) -> MaterializeResult:
-    """Run LLM enrichment on stg_condition records. Writes JSON to output/."""
+def _run_enrichment_asset(context, record_type: str, load_fn, prefix: str) -> MaterializeResult:
     from ai_layer.enricher import enrich_batch
-    from ai_layer.run_enrichment import load_conditions
 
     limit = int(os.getenv("ENRICHMENT_LIMIT", "50"))
-    records = load_conditions(limit)
-    context.log.info(f"Loaded {len(records)} condition records")
+    records = load_fn(limit)
+    context.log.info(f"Loaded {len(records)} {record_type} records")
 
-    results, errors = enrich_batch(records)
-    context.log.info(f"Enriched {len(results)} ok, {len(errors)} errors")
-
+    results, errors, usage = enrich_batch(records)
+    context.log.info(
+        f"Enriched {len(results)} ok, {len(errors)} errors — "
+        f"${usage['cost_usd']:.4f} "
+        f"({usage['input_tokens']} input, {usage['cache_read_tokens']} cached, "
+        f"{usage['output_tokens']} output tokens)"
+    )
     if errors:
         context.log.warning(f"Enrichment errors: {errors}")
 
     timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    out_path = OUTPUT_DIR / f"condition_enrichments_{timestamp}.json"
+    out_path = OUTPUT_DIR / f"{prefix}_{timestamp}.json"
     out_path.write_text(
         json.dumps([r.model_dump(mode="json") for r in results], indent=2, default=str)
     )
@@ -164,8 +161,27 @@ def condition_enrichments(context) -> MaterializeResult:
             "records_enriched": MetadataValue.int(len(results)),
             "errors": MetadataValue.int(len(errors)),
             "output_file": MetadataValue.path(str(out_path)),
+            "input_tokens": MetadataValue.int(usage["input_tokens"]),
+            "cache_read_tokens": MetadataValue.int(usage["cache_read_tokens"]),
+            "output_tokens": MetadataValue.int(usage["output_tokens"]),
+            "cost_usd": MetadataValue.float(round(usage["cost_usd"], 4)),
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# Asset 4: Enrich condition records
+# ---------------------------------------------------------------------------
+
+@asset(
+    deps=["dbt_staging_models"],
+    group_name="ai_enrichment",
+    compute_kind="llm",
+)
+def condition_enrichments(context) -> MaterializeResult:
+    """Run LLM enrichment on stg_condition records. Writes JSON to output/."""
+    from ai_layer.run_enrichment import load_conditions
+    return _run_enrichment_asset(context, "condition", load_conditions, "condition_enrichments")
 
 
 # ---------------------------------------------------------------------------
@@ -179,33 +195,8 @@ def condition_enrichments(context) -> MaterializeResult:
 )
 def medication_enrichments(context) -> MaterializeResult:
     """Run LLM enrichment on stg_medication records. Writes JSON to output/."""
-    from ai_layer.enricher import enrich_batch
     from ai_layer.run_enrichment import load_medications
-
-    limit = int(os.getenv("ENRICHMENT_LIMIT", "50"))
-    records = load_medications(limit)
-    context.log.info(f"Loaded {len(records)} medication records")
-
-    results, errors = enrich_batch(records)
-    context.log.info(f"Enriched {len(results)} ok, {len(errors)} errors")
-
-    if errors:
-        context.log.warning(f"Enrichment errors: {errors}")
-
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    out_path = OUTPUT_DIR / f"medication_enrichments_{timestamp}.json"
-    out_path.write_text(
-        json.dumps([r.model_dump(mode="json") for r in results], indent=2, default=str)
-    )
-
-    return MaterializeResult(
-        metadata={
-            "records_loaded": MetadataValue.int(len(records)),
-            "records_enriched": MetadataValue.int(len(results)),
-            "errors": MetadataValue.int(len(errors)),
-            "output_file": MetadataValue.path(str(out_path)),
-        }
-    )
+    return _run_enrichment_asset(context, "medication", load_medications, "medication_enrichments")
 
 
 # ---------------------------------------------------------------------------

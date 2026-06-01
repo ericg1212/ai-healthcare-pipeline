@@ -114,10 +114,14 @@ def run(record_type: str, limit: int) -> None:
         records += load_medications(n)
 
     print(f"Loaded {len(records)} record(s). Running enrichment...")
-    enrichment_results, enrichment_errors = enrich_batch(records)
+    enrichment_results, enrichment_errors, enrichment_usage = enrich_batch(records)
     print(
         f"Enrichment done: {len(enrichment_results)} ok, "
-        f"{len(enrichment_errors)} error(s)."
+        f"{len(enrichment_errors)} error(s). "
+        f"Cost: ${enrichment_usage['cost_usd']:.4f} "
+        f"({enrichment_usage['input_tokens']} input, "
+        f"{enrichment_usage['cache_read_tokens']} cached, "
+        f"{enrichment_usage['output_tokens']} output tokens)"
     )
 
     print("Running LLM-as-Judge...")
@@ -138,6 +142,7 @@ def run(record_type: str, limit: int) -> None:
         "limit": limit,
         "enrichment_results": [r.model_dump(mode="json") for r in enrichment_results],
         "enrichment_errors": enrichment_errors,
+        "enrichment_usage": enrichment_usage,
         "judge_verdicts": [v.model_dump(mode="json") for v in verdicts],
         "judge_errors": judge_errors,
     }
