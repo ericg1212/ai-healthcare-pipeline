@@ -16,6 +16,7 @@ TODO (Eric): decide anchoring strategy — pass rationale or hide it?
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import anthropic
 from dotenv import load_dotenv
@@ -214,21 +215,25 @@ def judge_batch(
     results: list[EnrichmentResult],
     *,
     stop_on_error: bool = False,
+    max_workers: int = 10,
 ) -> tuple[list[JudgeVerdict], list[dict]]:
-    """Judge a list of EnrichmentResults. Returns (verdicts, errors)."""
+    """Judge a list of EnrichmentResults concurrently. Returns (verdicts, errors)."""
     verdicts: list[JudgeVerdict] = []
     errors: list[dict] = []
 
-    for result in results:
-        try:
-            verdicts.append(judge_result(result))
-        except Exception as exc:
-            errors.append({
-                "patient_id": result.patient_id,
-                "record_code": result.record_code,
-                "error": str(exc),
-            })
-            if stop_on_error:
-                raise
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_result = {executor.submit(judge_result, r): r for r in results}
+        for future in as_completed(future_to_result):
+            result = future_to_result[future]
+            try:
+                verdicts.append(future.result())
+            except Exception as exc:
+                errors.append({
+                    "patient_id": result.patient_id,
+                    "record_code": result.record_code,
+                    "error": str(exc),
+                })
+                if stop_on_error:
+                    raise
 
     return verdicts, errors

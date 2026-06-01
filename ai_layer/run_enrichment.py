@@ -73,6 +73,50 @@ def load_conditions(limit: int) -> list[ConditionRecord]:
         conn.close()
 
 
+def load_patient_context(patient_ids: list[str]) -> dict:
+    """Load co-occurring conditions and medications for a list of patient IDs.
+
+    Returns dict[patient_id -> {conditions: [...], medications: [...]}].
+    Used to inject patient context into enrichment prompts.
+    """
+    if not patient_ids:
+        return {}
+
+    conn = _get_connection()
+    placeholders = ", ".join(f"'{pid}'" for pid in patient_ids)
+    context: dict = {pid: {"conditions": [], "medications": []} for pid in patient_ids}
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT patient_id, condition_code, condition_description
+            FROM stg_condition
+            WHERE patient_id IN ({placeholders})
+            ORDER BY onset_date DESC NULLS LAST
+            """  # nosec B608 — patient_ids are internal pipeline values, not user input
+        )
+        for row in cursor.fetchall():
+            pid, code, desc = row
+            if pid in context:
+                context[pid]["conditions"].append({"code": code, "description": desc})
+
+        cursor.execute(
+            f"""
+            SELECT patient_id, medication_code, medication_description
+            FROM stg_medication
+            WHERE patient_id IN ({placeholders})
+            ORDER BY start_date DESC NULLS LAST
+            """  # nosec B608
+        )
+        for row in cursor.fetchall():
+            pid, code, desc = row
+            if pid in context:
+                context[pid]["medications"].append({"code": code, "description": desc})
+    finally:
+        conn.close()
+    return context
+
+
 def load_medications(limit: int) -> list[MedicationRecord]:
     conn = _get_connection()
     try:
@@ -114,10 +158,14 @@ def run(record_type: str, limit: int) -> None:
         records += load_medications(n)
 
     print(f"Loaded {len(records)} record(s). Running enrichment...")
-    enrichment_results, enrichment_errors = enrich_batch(records)
+    enrichment_results, enrichment_errors, enrichment_usage = enrich_batch(records)
     print(
         f"Enrichment done: {len(enrichment_results)} ok, "
-        f"{len(enrichment_errors)} error(s)."
+        f"{len(enrichment_errors)} error(s). "
+        f"Cost: ${enrichment_usage['cost_usd']:.4f} "
+        f"({enrichment_usage['input_tokens']} input, "
+        f"{enrichment_usage['cache_read_tokens']} cached, "
+        f"{enrichment_usage['output_tokens']} output tokens)"
     )
 
     print("Running LLM-as-Judge...")
@@ -138,6 +186,7 @@ def run(record_type: str, limit: int) -> None:
         "limit": limit,
         "enrichment_results": [r.model_dump(mode="json") for r in enrichment_results],
         "enrichment_errors": enrichment_errors,
+        "enrichment_usage": enrichment_usage,
         "judge_verdicts": [v.model_dump(mode="json") for v in verdicts],
         "judge_errors": judge_errors,
     }
