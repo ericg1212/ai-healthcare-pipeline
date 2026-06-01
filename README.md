@@ -158,6 +158,10 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 
 ## Architecture
 
+![Dagster Asset Graph](docs/dagster_asset_graph.png)
+
+*8-asset Dagster pipeline — ingestion → staging → AI enrichment (parallel) → LLM-as-Judge → Gold/Review routing → dbt marts*
+
 ```
 Synthea (Python FHIR R4 generator)
          ↓
@@ -239,13 +243,16 @@ ai-healthcare-pipeline/
 ## Future Enhancements
 
 **[Priority 1] RAG with Clinical Guidelines**
-Instead of the LLM reasoning from training data alone, retrieve the current clinical guideline — ACC/AHA cardiovascular standards, ADA diabetes management, SAMHSA behavioral health protocols — and include it directly in the enrichment prompt. The LLM then reasons against authoritative, current literature rather than potentially outdated training knowledge. Implementation requires a vector database (Pinecone) to store and retrieve guideline embeddings at inference time.
+Retrieve current clinical guidelines (ACC/AHA cardiovascular, ADA diabetes management, SAMHSA behavioral health) at inference time and inject them into the enrichment prompt. The LLM reasons against authoritative, current literature rather than training knowledge alone. Requires a vector database (Pinecone) for guideline embeddings and a retrieval layer keyed on SNOMED CT concept.
+
+**[Priority 2] Event-Driven Architecture**
+CMS-0057-F (effective Jan 2027) mandates 72-hour prior auth response windows — batch pipelines cannot meet this SLA. Migration path: Snowpipe for real-time FHIR ingest, Dagster sensor on S3 arrival events, dbt MERGE for idempotent upserts. Sub-hour end-to-end latency target.
 
 **SNOMED CT / RxNorm API Validation**
-Clinical terminology verification against authoritative vocabularies at ingestion time.
+Terminology verification against NLM/FDA authoritative vocabularies at ingestion — catches code drift before enrichment.
 
 **Confidence Threshold Calibration**
-Tunable review queue sizing based on operational capacity and acceptable risk tolerance.
+Tunable review queue sizing based on operational capacity and acceptable risk tolerance. Current threshold (0.55) calibrated from observed batch avg (0.584).
 
 ---
 
