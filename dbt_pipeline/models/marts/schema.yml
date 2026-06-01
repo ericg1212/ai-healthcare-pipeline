@@ -1,0 +1,33 @@
+version: 2
+
+models:
+  - name: gold_records
+    description: "Enriched records that passed LLM-as-Judge and rules engine review. Trusted for downstream analytics."
+    columns:
+      - name: patient_id
+        tests:
+          - not_null
+      - name: record_code
+        tests:
+          - not_null
+      - name: gold_status
+        tests:
+          - not_null
+
+  - name: review_records
+    description: "Enriched records flagged for human review — judge disagreement, rules engine flags, or low confidence."
+    columns:
+      - name: patient_id
+        tests:
+          - not_null
+      - name: record_code
+        tests:
+          - not_null
+      - name: gold_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['enriched_review_conflict', 'enriched_review_low_confidence']
+      - name: review_reason
+        tests:
+          - not_null

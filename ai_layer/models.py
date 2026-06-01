@@ -103,3 +103,25 @@ class JudgeVerdict(BaseModel):
         if not self.judge_agrees and not self.disagreement_reason:
             raise ValueError("disagreement_reason required when judge_agrees=False")
         return self
+
+
+# ---------------------------------------------------------------------------
+# Gold routing output
+# ---------------------------------------------------------------------------
+
+class GoldRecord(BaseModel):
+    patient_id: str
+    record_type: Literal["condition", "medication"]
+    record_code: str
+    record_description: str
+    overall_confidence: float = Field(ge=0.0, le=1.0)
+    gold_status: Literal[
+        "enriched_clean",
+        "enriched_review_conflict",
+        "enriched_review_low_confidence",
+    ]
+    review_reason: str | None = None
+    flags_triggered: list[str] = Field(default_factory=list)
+    judge_agrees: bool
+    corrected_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    routed_at: datetime = Field(default_factory=datetime.utcnow)

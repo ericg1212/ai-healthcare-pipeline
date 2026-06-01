@@ -1,0 +1,9 @@
+# Kernel-level CVEs in linux-libc-dev — not exploitable in container workloads.
+# Containers share the host kernel; patching the kernel header package in the
+# image does not remediate these — only a host kernel update does.
+CVE-2026-46300
+CVE-2026-23171
+CVE-2026-43494
+CVE-2026-43503
+CVE-2026-46209
+CVE-2026-46227
