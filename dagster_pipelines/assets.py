@@ -149,8 +149,8 @@ def condition_enrichments(context) -> MaterializeResult:
     patient_ctx = load_patient_context(patient_ids)
     context.log.info(f"Loaded patient context for {len(patient_ctx)} patients")
 
-    results, errors = enrich_batch(records, patient_context=patient_ctx)
-    context.log.info(f"Enriched {len(results)} ok, {len(errors)} errors")
+    results, errors, usage = enrich_batch(records, patient_context=patient_ctx)
+    context.log.info(f"Enriched {len(results)} ok, {len(errors)} errors | cost ${usage['cost_usd']:.4f}")
 
     if errors:
         context.log.warning(f"Enrichment errors: {errors}")
@@ -166,6 +166,7 @@ def condition_enrichments(context) -> MaterializeResult:
             "records_loaded": MetadataValue.int(len(records)),
             "records_enriched": MetadataValue.int(len(results)),
             "errors": MetadataValue.int(len(errors)),
+            "cost_usd": MetadataValue.float(usage["cost_usd"]),
             "output_file": MetadataValue.path(str(out_path)),
         }
     )
@@ -193,8 +194,8 @@ def medication_enrichments(context) -> MaterializeResult:
     patient_ctx = load_patient_context(patient_ids)
     context.log.info(f"Loaded patient context for {len(patient_ctx)} patients")
 
-    results, errors = enrich_batch(records, patient_context=patient_ctx)
-    context.log.info(f"Enriched {len(results)} ok, {len(errors)} errors")
+    results, errors, usage = enrich_batch(records, patient_context=patient_ctx)
+    context.log.info(f"Enriched {len(results)} ok, {len(errors)} errors | cost ${usage['cost_usd']:.4f}")
 
     if errors:
         context.log.warning(f"Enrichment errors: {errors}")
@@ -210,6 +211,7 @@ def medication_enrichments(context) -> MaterializeResult:
             "records_loaded": MetadataValue.int(len(records)),
             "records_enriched": MetadataValue.int(len(results)),
             "errors": MetadataValue.int(len(errors)),
+            "cost_usd": MetadataValue.float(usage["cost_usd"]),
             "output_file": MetadataValue.path(str(out_path)),
         }
     )

@@ -325,14 +325,21 @@ def _build_user_message(
     return "\n".join(lines)
 
 
+# Sonnet pricing per token (USD)
+_INPUT_COST = 3.0 / 1_000_000
+_OUTPUT_COST = 15.0 / 1_000_000
+_CACHE_READ_COST = 0.30 / 1_000_000
+_CACHE_WRITE_COST = 3.75 / 1_000_000
+
+
 def enrich_record(
     record: Union[ConditionRecord, MedicationRecord],
     patient_context: dict | None = None,
-) -> EnrichmentResult:
-    """Call Claude to enrich a single condition or medication record.
+) -> tuple[EnrichmentResult, dict]:
+    """Call Claude to enrich a single record. Returns (EnrichmentResult, usage_dict).
 
     Uses prompt caching on the system prompt (static clinical context).
-    Returns a validated EnrichmentResult — raises on tool_use failure.
+    Raises on tool_use failure.
     """
     response = _client.messages.create(
         model=MODEL,
@@ -361,6 +368,24 @@ def enrich_record(
         )
 
     raw: dict = tool_block.input
+    u = response.usage
+    input_tokens = u.input_tokens
+    output_tokens = u.output_tokens
+    cache_read = getattr(u, "cache_read_input_tokens", 0) or 0
+    cache_write = getattr(u, "cache_creation_input_tokens", 0) or 0
+    cost_usd = (
+        input_tokens * _INPUT_COST
+        + output_tokens * _OUTPUT_COST
+        + cache_read * _CACHE_READ_COST
+        + cache_write * _CACHE_WRITE_COST
+    )
+    usage = {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read,
+        "cache_write_tokens": cache_write,
+        "cost_usd": cost_usd,
+    }
 
     record_code = (
         record.condition_code
@@ -374,7 +399,7 @@ def enrich_record(
     )
     record_type = "condition" if isinstance(record, ConditionRecord) else "medication"
 
-    return EnrichmentResult(
+    result = EnrichmentResult(
         patient_id=record.patient_id,
         record_type=record_type,
         record_code=record_code,
@@ -387,6 +412,7 @@ def enrich_record(
         comorbidity_risk=CategoryScore(**raw["comorbidity_risk"]),
         overall_confidence=raw["overall_confidence"],
     )
+    return result, usage
 
 
 def enrich_batch(
@@ -395,15 +421,15 @@ def enrich_batch(
     patient_context: dict | None = None,
     stop_on_error: bool = False,
     max_workers: int = 10,
-) -> tuple[list[EnrichmentResult], list[dict]]:
-    """Enrich a list of records concurrently. Returns (results, errors).
+) -> tuple[list[EnrichmentResult], list[dict], dict]:
+    """Enrich a list of records concurrently. Returns (results, errors, usage).
 
     patient_context: optional dict[patient_id -> {conditions, medications}]
-    Prompt cache warms on the first call; subsequent calls hit the cache
-    and cost ~10% of the input token price.
+    usage: aggregated token counts and cost_usd across all calls.
     """
     results: list[EnrichmentResult] = []
     errors: list[dict] = []
+    agg = {"input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0, "cost_usd": 0.0}
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_record = {
@@ -417,7 +443,10 @@ def enrich_batch(
         for future in as_completed(future_to_record):
             record = future_to_record[future]
             try:
-                results.append(future.result())
+                result, usage = future.result()
+                results.append(result)
+                for k in agg:
+                    agg[k] += usage[k]
             except Exception as exc:
                 err = {
                     "patient_id": record.patient_id,
@@ -429,4 +458,4 @@ def enrich_batch(
                 if stop_on_error:
                     raise
 
-    return results, errors
+    return results, errors, agg
