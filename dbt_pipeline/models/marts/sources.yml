@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: gold
+    database: AI_HEALTHCARE
+    schema: GOLD
+    tables:
+      - name: gold_records
