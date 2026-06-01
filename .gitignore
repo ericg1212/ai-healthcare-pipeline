@@ -26,6 +26,7 @@ quality/great_expectations/uncommitted/
 
 # Dagster
 $DAGSTER_HOME/
+.tmp_dagster_home_*/
 
 # Streamlit
 .streamlit/
@@ -54,3 +55,7 @@ logs/
 
 # Large binaries
 data_ingestion/*.jar
+
+# Snowflake export (local only — contains credentials output)
+snowflake_export/
+snowflake_export_run.py

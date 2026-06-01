@@ -1,16 +1,11 @@
 """
-LLM-as-Judge scaffold v0.
+LLM-as-Judge layer.
 
-The judge receives an EnrichmentResult (from enricher.py) and independently
-re-evaluates it, returning a JudgeVerdict. This is a second Claude call with
-a different system prompt — the judge should NOT see the enricher's rationale
-to avoid anchoring bias.
-
-TODO (Eric): write JUDGE_SYSTEM_PROMPT — frame Claude as a skeptical peer
-             reviewer, not the enricher. Define what counts as disagreement
-             per category and when to flag corrected_confidence.
-TODO (Eric): decide anchoring strategy — pass rationale or hide it?
-             Current scaffold hides rationale (blind review). Change if needed.
+Independently audits each EnrichmentResult using a second LLM call with a
+separate system prompt. Rationale is intentionally hidden (blind review) to
+prevent anchoring bias — the judge evaluates scores only. Five disagreement
+triggers defined; returns corrected_confidence when disagreeing. Concurrent
+batch processing via ThreadPoolExecutor.
 """
 
 from __future__ import annotations
@@ -30,10 +25,7 @@ _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 MODEL = "claude-sonnet-4-6"
 
 # ---------------------------------------------------------------------------
-# TODO (Eric): write the judge system prompt.
-# The judge's job is to challenge the enricher, not confirm it.
-# Define: what triggers disagreement, scoring rubric, clinical standards.
-# Keep it >1024 tokens to cache.
+# Judge system prompt — skeptical auditor, scores-only input, >1024 tokens.
 # ---------------------------------------------------------------------------
 JUDGE_SYSTEM_PROMPT = """
 You are a senior clinical quality auditor at a health data organization. Your
@@ -146,9 +138,8 @@ JUDGE_TOOL: dict = {
 def _build_judge_message(result: EnrichmentResult) -> str:
     """Format an EnrichmentResult for the judge.
 
-    Scores are visible; rationale is hidden (blind review).
-    TODO (Eric): decide if you want to expose rationale. If yes, add
-                 f'  rationale: {cat.rationale}' lines below.
+    Scores are visible; rationale is intentionally hidden (blind review —
+    prevents anchoring bias).
     """
     lines = [
         f"Record type: {result.record_type.upper()}",

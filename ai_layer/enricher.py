@@ -1,10 +1,9 @@
 """
-LLM enrichment script v0.
+LLM enrichment layer.
 
-Calls Claude with prompt caching on the (large, static) system prompt.
-Returns structured EnrichmentResult via tool_use — no free-text parsing.
-
-TODO (Eric): fill in SYSTEM_PROMPT with your clinical context/guidelines.
+Scores each FHIR record across 6 clinical quality dimensions using tool_use
+structured output and prompt caching. Concurrent batch processing via
+ThreadPoolExecutor. Returns per-call token usage and aggregated cost.
 """
 
 from __future__ import annotations
@@ -30,10 +29,7 @@ _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 MODEL = "claude-sonnet-4-6"
 
 # ---------------------------------------------------------------------------
-# TODO (Eric): write your clinical system prompt here.
-# Keep it substantial (>1024 tokens) to get prompt cache hits.
-# Include: clinical coding standards (ICD-10, NDC), scoring rubric,
-# what each of your 6 categories means, and output expectations.
+# System prompt — SNOMED CT / RxNorm aware, >1024 tokens for cache hits.
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """
 You are a clinical data enrichment specialist evaluating synthetic EHR records
@@ -202,16 +198,11 @@ likely has or will develop additional conditions that compound clinical complexi
 """
 
 # ---------------------------------------------------------------------------
-# Tool definition — Claude uses tool_use to return structured output.
-# TODO (Eric): rename category_1..6 to your actual category names.
-#              Update each "description" field with clinical meaning.
+# Tool definition — enforces structured output via tool_use.
 # ---------------------------------------------------------------------------
 ENRICHMENT_TOOL: dict = {
     "name": "submit_enrichment",
-    "description": (
-        # TODO: describe what the tool does in clinical terms
-        "Submit structured clinical enrichment scores for a medical record."
-    ),
+    "description": "Submit structured clinical enrichment scores for a FHIR EHR record.",
     "input_schema": {
         "type": "object",
         "properties": {

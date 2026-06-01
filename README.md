@@ -1,4 +1,4 @@
-# Trust but Verify: Clinical AI Governance Engine
+# Trust but Verify: Clinical AI Governance Engine [![v1.0.0](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)](https://github.com/ericg1212/ai-healthcare-pipeline/releases/tag/v1.0.0)
 
 [![CI](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
@@ -149,7 +149,7 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 | Raw storage | AWS S3 |
 | Warehouse | Snowflake |
 | Transformation | dbt |
-| AI enrichment | Anthropic API |
+| AI enrichment | LLM API (Anthropic) |
 | Orchestration | Dagster |
 | Dashboard | Streamlit *(Phase 2)* |
 | CI | GitHub Actions |
