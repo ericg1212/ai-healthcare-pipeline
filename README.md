@@ -64,7 +64,7 @@ Each condition and medication record is scored across 6 clinical quality dimensi
 
 | Category | What It Measures |
 |---|---|
-| `diagnosis_specificity` | ICD-10 code specificity — 7-char codes score high, 3-char catch-alls score low |
+| `diagnosis_specificity` | SNOMED CT / RxNorm concept specificity — leaf-level concepts score high, broad category codes score low |
 | `clinical_urgency` | Implied acuity — acute/life-threatening vs. stable chronic vs. preventive |
 | `coding_accuracy` | Description-to-code alignment — catches mismatches between free text and coded values |
 | `medication_appropriateness` | Whether the medication is clinically reasonable given the record context |
@@ -77,7 +77,7 @@ Each category returns a score (0.0–1.0) and a one-sentence rationale citing th
 
 A second LLM call audits the enrichment result. The judge receives scores only — rationale is hidden to prevent anchoring bias. Five disagreement triggers are defined:
 
-1. **Inflated score** — category ≥ 0.85 on a Synthea record with a 3-char ICD-10 code or generic description
+1. **Inflated score** — category ≥ 0.85 on a Synthea record with a broad-category SNOMED concept or generic description
 2. **Deflated score** — category ≤ 0.25 on a well-known chronic condition or textbook first-line medication
 3. **Internal inconsistency** — `coding_accuracy ≥ 0.8` with `diagnosis_specificity ≤ 0.4`, or `medication_appropriateness ≥ 0.85` with `drug_condition_alignment ≤ 0.3`
 4. **Overall drift** — `overall_confidence` diverges more than 0.20 from the simple category average
@@ -89,9 +89,9 @@ When the judge disagrees, it returns `corrected_confidence`, the specific `disag
 
 Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to the LLM on every record. Flag aggregation rule: HIGH if `flags_fired ≥ 2` OR any Medication Safety flag fires.
 
-**4. Gold / Review Routing** — Phase 2
+**4. Gold / Review Routing** ✓ Live
 
-LLM-as-Judge disagreement or rules engine conflict → Review queue with explainable reason. Full agreement → Gold layer. Three Gold record states: enriched clean, enriched + review_flag (genuine conflict), enriched + review_flag (low confidence abstention).
+LLM-as-Judge disagreement or rules engine conflict → Review queue with explainable reason. Full agreement → Gold layer. Three Gold record states: `enriched_clean` (trusted for downstream analytics), `enriched_review_conflict` (judge disagrees or rules fired), `enriched_review_low_confidence` (both agree but confidence < 0.55). Each Review record carries a `review_reason` string — a human-readable explanation of exactly why it was flagged.
 
 ---
 
@@ -116,15 +116,15 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 
 ## Results
 
-> Enrichment run on a representative sample. Full batch results update as Phase 2 routing is completed.
-
-| Metric | Finding |
+| Metric | Value |
 |---|---|
-| Enrichment success rate | Records parsed and scored without validation errors |
-| Most common Judge trigger | Flat scoring — enricher not discriminating across categories |
-| Highest rules engine flag rate | Diabetes & Metabolic — dense comorbidity clusters in Synthea population |
+| Enrichment success rate | 97/100 records scored without validation errors (3 errors) |
+| Avg overall_confidence | 0.584 across conditions + medications |
+| Confidence threshold | 0.55 — records below routed to `enriched_review_low_confidence` |
+| Most common Judge trigger | Internal inconsistency (coding_accuracy vs. diagnosis_specificity) |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
-| Pydantic validation failures | Raised at parse time, zero silent failures downstream |
+| Pydantic validation failures | Raised at parse time — zero silent failures downstream |
+| Gold routing states | `enriched_clean` / `enriched_review_conflict` / `enriched_review_low_confidence` |
 
 ---
 
@@ -135,7 +135,7 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 | Patient records | 226 synthetic FHIR R4 patients |
 | Total clinical records | 25,958 (conditions + medications + encounters) |
 | AI enrichment categories | 6 per record |
-| Confidence threshold | 0.70 (configurable) |
+| Confidence threshold | 0.55 (configurable via `router.py`) |
 | Rules engine categories | 6 deterministic clinical domains |
 | Validation gate | Dual — LLM-as-Judge + Rules Engine |
 
@@ -174,7 +174,7 @@ Synthea (Python FHIR R4 generator)
 │                                 │
 │  1. LLM Enrichment              │
 │     6-category scoring          │
-│     confidence < 0.70 → REVIEW  │
+│     confidence < 0.55 → REVIEW  │
 │             ↓                   │
 │  2. LLM-as-Judge                │
 │     blind audit, 5 triggers     │
@@ -208,24 +208,26 @@ ai-healthcare-pipeline/
 │   └── load_to_snowflake.py    # S3 upload + Snowflake COPY INTO (25,958 records)
 ├── ai_layer/
 │   ├── models.py               # Pydantic schemas: ConditionRecord, MedicationRecord,
-│   │                           #   EnrichmentResult (6 CategoryScore fields + validator),
-│   │                           #   JudgeVerdict (5 triggers + corrected_confidence)
-│   ├── enricher.py             # LLM enrichment — tool_use structured output,
-│   │                           #   prompt caching, 6-category scoring, enrich_batch()
+│   │                           #   EnrichmentResult, JudgeVerdict, GoldRecord
+│   ├── enricher.py             # LLM enrichment — SNOMED CT/RxNorm aware, tool_use
+│   │                           #   structured output, prompt caching, patient context
+│   │                           #   injection, concurrent enrich_batch()
 │   ├── judge.py                # LLM-as-Judge — blind review, 5 disagreement triggers,
-│   │                           #   corrected_confidence, judge_batch()
+│   │                           #   corrected_confidence, concurrent judge_batch()
 │   ├── rules_engine.py         # Deterministic rules — 6 clinical categories, binary flags
-│   └── run_enrichment.py       # CLI entry: Snowflake staging → enrich → judge → JSON
-│                               #   usage: python -m ai_layer.run_enrichment --limit 10
+│   ├── router.py               # Gold/Review routing gate — 3 gold states, conflict
+│   │                           #   detection, confidence threshold (0.55)
+│   └── run_enrichment.py       # CLI + Snowflake loaders incl. load_patient_context()
 ├── dbt_pipeline/
 │   ├── models/
 │   │   ├── staging/            # stg_person, stg_condition, stg_medication, stg_encounter
-│   │   └── marts/              # Gold + Review split (Phase 2)
+│   │   └── marts/              # gold_records, review_records (live)
 │   └── dbt_project.yml
 ├── dagster_pipelines/
-│   ├── assets.py               # 6 SDAs: fhir_s3_upload → snowflake_raw_tables →
+│   ├── assets.py               # 8 SDAs: fhir_s3_upload → snowflake_raw_tables →
 │   │                           #   dbt_staging_models → condition_enrichments +
-│   │                           #   medication_enrichments → ai_enrichment_verdicts
+│   │                           #   medication_enrichments → ai_enrichment_verdicts →
+│   │                           #   gold_review_routing → dbt_mart_models
 │   └── definitions.py          # Dagster Definitions entry point
 ├── workspace.yaml              # dagster dev -m dagster_pipelines
 ├── streamlit_app/              # Dashboard (Phase 2)

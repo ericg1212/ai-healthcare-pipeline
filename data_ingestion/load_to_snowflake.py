@@ -6,7 +6,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from snowflake.connector.pandas_tools import write_pandas
 
-from fhir_parser import parse_all
+from data_ingestion.fhir_parser import parse_all
 
 load_dotenv()
 

@@ -10,6 +10,7 @@ TODO (Eric): fill in SYSTEM_PROMPT with your clinical context/guidelines.
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Union
 
 import anthropic
@@ -46,40 +47,64 @@ obesity, asthma, and common comorbidity clusters seen in real-world claims data.
 Medications include first-line therapies (metformin, lisinopril, atorvastatin),
 inhalers, and common polypharmacy combinations.
 
+## Code Systems in This Dataset
+
+CONDITION records use SNOMED CT codes (numeric, e.g. 44054006 = "Type 2 diabetes
+mellitus"). SNOMED CT specificity is measured by concept granularity — how
+specific the clinical concept is, not code length.
+
+MEDICATION records use RxNorm codes (numeric, e.g. 860975 = metformin 500mg).
+RxNorm specificity is measured by how precisely the code identifies the drug,
+dose, and form. A clinical drug code (with dose + form) is more specific than
+an ingredient-only code.
+
+Do NOT apply ICD-10 character-length rules to SNOMED CT codes. Do NOT apply
+NDC rules to RxNorm codes. Score specificity based on concept granularity.
+
 ## Universal Scoring Scale
 
 Apply this scale consistently across all 6 categories:
 
   0.0 – 0.2  Very low: record is missing key fields, code is completely
-              non-specific (e.g. Z99, R69), or description contradicts the code.
+              non-specific, or description contradicts the code.
 
-  0.3 – 0.4  Low: partial information present; code is a 3-character catch-all
-              with no further specification; clinical rationale is weak.
+  0.3 – 0.4  Low: partial information present; code is a broad category-level
+              concept; clinical rationale is weak.
 
   0.5 – 0.6  Moderate: code is valid and description broadly matches, but
               specificity is limited — could apply to a wide patient population.
 
-  0.7 – 0.8  High: code is specific (5–7 characters for ICD-10, full NDC for
-              medications), description matches code, clinical context is clear.
+  0.7 – 0.8  High: code identifies a specific clinical concept; description
+              matches code; clinical context is clear.
 
-  0.9 – 1.0  Definitive: textbook-quality record. ICD-10 at maximum specificity,
-              description exactly matches code intent, no ambiguity.
+  0.9 – 1.0  Definitive: textbook-quality record. Highly specific concept with
+              exact description match; no ambiguity.
 
 ## Category Definitions and Scoring Rubrics
 
 ### 1. diagnosis_specificity
-Measures how specific the ICD-10 code is. ICD-10 codes range from 3 characters
-(category level, e.g. E11 — Type 2 diabetes) to 7 characters (full specificity,
-e.g. E11.65 — T2D with hyperglycemia). More characters = more specificity.
+For CONDITION records (SNOMED CT): measures how specific the clinical concept is.
+  Score 0.9–1.0: Leaf-level or near-leaf SNOMED concept. Description names a
+                 specific disorder with qualifiers (e.g. "Type 2 diabetes mellitus
+                 with diabetic nephropathy", "Acute ST-elevation myocardial infarction
+                 of anterior wall"). No ambiguity about the clinical entity.
+  Score 0.7–0.8: Specific condition with a clear clinical identity but no
+                 complication qualifier (e.g. "Type 2 diabetes mellitus",
+                 "Essential hypertension", "Chronic kidney disease stage 3").
+  Score 0.5–0.6: Moderately specific — identifies a condition category but lacks
+                 granularity (e.g. "Chronic kidney disease", "Asthma").
+  Score 0.3–0.4: Broad, category-level concept (e.g. "Disorder of kidney",
+                 "Finding of glucose level").
+  Score 0.0–0.2: Generic, non-specific, or a finding code with no clinical
+                 identity (e.g. "Stress (finding)", "Abnormal result").
 
-  Score 0.9–1.0: 5–7 character code; description matches exactly.
-  Score 0.7–0.8: 4–5 character code; description is clinically coherent.
-  Score 0.5–0.6: 3–4 character code (category-level); still valid but not specific.
-  Score 0.2–0.4: Code is a catch-all (e.g. R69 — illness unspecified, Z99).
-  Score 0.0–0.1: Code missing, invalid format, or description is blank.
-
-For medication records, score based on NDC specificity:
-  full 11-digit NDC = 0.9+; partial or missing NDC = lower.
+For MEDICATION records (RxNorm): measures drug-dose-form specificity.
+  Score 0.9–1.0: Clinical drug code with specific dose + form (e.g. "Metformin
+                 500 MG Oral Tablet").
+  Score 0.7–0.8: Ingredient + form but no specific dose (e.g. "Metformin
+                 Oral Tablet").
+  Score 0.5–0.6: Ingredient only (e.g. "Metformin").
+  Score 0.2–0.4: Missing, ambiguous, or unrecognized RxNorm code.
 
 ### 2. clinical_urgency
 Measures implied acuity — how urgent or severe is this record?
@@ -260,34 +285,49 @@ ENRICHMENT_TOOL: dict = {
 }
 
 
-def _build_user_message(record: Union[ConditionRecord, MedicationRecord]) -> str:
-    """Format a staging record into the user turn.
-
-    TODO (Eric): expand this to include any additional context you want
-    Claude to see (e.g. patient age from stg_person join, co-occurring
-    conditions/medications for the same patient_id).
-    """
+def _build_user_message(
+    record: Union[ConditionRecord, MedicationRecord],
+    patient_context: dict | None = None,
+) -> str:
+    """Format a staging record into the user turn, optionally with patient context."""
     if isinstance(record, ConditionRecord):
-        return (
-            f"Record type: CONDITION\n"
-            f"Patient ID: {record.patient_id}\n"
-            f"Code: {record.condition_code}\n"
-            f"Description: {record.condition_description}\n"
-            f"Onset date: {record.onset_date or 'unknown'}\n\n"
-            f"Score this condition record across all 6 clinical categories."
-        )
-    return (
-        f"Record type: MEDICATION\n"
-        f"Patient ID: {record.patient_id}\n"
-        f"Code: {record.medication_code}\n"
-        f"Description: {record.medication_description}\n"
-        f"Start date: {record.start_date or 'unknown'}\n\n"
-        f"Score this medication record across all 6 clinical categories."
-    )
+        lines = [
+            "Record type: CONDITION (code system: SNOMED CT)",
+            f"Patient ID: {record.patient_id}",
+            f"Code: {record.condition_code}",
+            f"Description: {record.condition_description}",
+            f"Onset date: {record.onset_date or 'unknown'}",
+        ]
+    else:
+        lines = [
+            "Record type: MEDICATION (code system: RxNorm)",
+            f"Patient ID: {record.patient_id}",
+            f"Code: {record.medication_code}",
+            f"Description: {record.medication_description}",
+            f"Start date: {record.start_date or 'unknown'}",
+        ]
+
+    if patient_context:
+        other_conditions = patient_context.get("conditions", [])
+        other_medications = patient_context.get("medications", [])
+        if other_conditions or other_medications:
+            lines.append("\nPatient context (co-occurring records for this patient):")
+        if other_conditions:
+            lines.append("  Other conditions:")
+            for c in other_conditions[:5]:
+                lines.append(f"    - {c['code']}: {c['description']}")
+        if other_medications:
+            lines.append("  Other medications:")
+            for m in other_medications[:5]:
+                lines.append(f"    - {m['code']}: {m['description']}")
+
+    lines.append("\nScore this record across all 6 clinical categories.")
+    return "\n".join(lines)
 
 
 def enrich_record(
     record: Union[ConditionRecord, MedicationRecord],
+    patient_context: dict | None = None,
 ) -> EnrichmentResult:
     """Call Claude to enrich a single condition or medication record.
 
@@ -301,13 +341,13 @@ def enrich_record(
             {
                 "type": "text",
                 "text": SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},  # cache the large system prompt
+                "cache_control": {"type": "ephemeral"},
             }
         ],
         tools=[ENRICHMENT_TOOL],
         tool_choice={"type": "tool", "name": "submit_enrichment"},
         messages=[
-            {"role": "user", "content": _build_user_message(record)},
+            {"role": "user", "content": _build_user_message(record, patient_context)},
         ],
     )
 
@@ -352,28 +392,41 @@ def enrich_record(
 def enrich_batch(
     records: list[Union[ConditionRecord, MedicationRecord]],
     *,
+    patient_context: dict | None = None,
     stop_on_error: bool = False,
+    max_workers: int = 10,
 ) -> tuple[list[EnrichmentResult], list[dict]]:
-    """Enrich a list of records. Returns (results, errors).
+    """Enrich a list of records concurrently. Returns (results, errors).
 
-    Prompt cache warms on the first call; subsequent calls in the same
-    batch hit the cache and cost ~10% of the input token price.
+    patient_context: optional dict[patient_id -> {conditions, medications}]
+    Prompt cache warms on the first call; subsequent calls hit the cache
+    and cost ~10% of the input token price.
     """
     results: list[EnrichmentResult] = []
     errors: list[dict] = []
 
-    for record in records:
-        try:
-            results.append(enrich_record(record))
-        except Exception as exc:
-            err = {
-                "patient_id": record.patient_id,
-                "record_code": getattr(record, "condition_code", None)
-                or getattr(record, "medication_code", None),
-                "error": str(exc),
-            }
-            errors.append(err)
-            if stop_on_error:
-                raise
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_record = {
+            executor.submit(
+                enrich_record,
+                r,
+                patient_context.get(r.patient_id) if patient_context else None,
+            ): r
+            for r in records
+        }
+        for future in as_completed(future_to_record):
+            record = future_to_record[future]
+            try:
+                results.append(future.result())
+            except Exception as exc:
+                err = {
+                    "patient_id": record.patient_id,
+                    "record_code": getattr(record, "condition_code", None)
+                    or getattr(record, "medication_code", None),
+                    "error": str(exc),
+                }
+                errors.append(err)
+                if stop_on_error:
+                    raise
 
     return results, errors

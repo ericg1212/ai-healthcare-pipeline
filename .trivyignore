@@ -1,0 +1,4 @@
+# Kernel-level CVEs are not exploitable in container workloads.
+# Containers share the host kernel; patching the kernel package in the image
+# does not remediate these vulnerabilities — only a host kernel update does.
+CVE-2026-46300

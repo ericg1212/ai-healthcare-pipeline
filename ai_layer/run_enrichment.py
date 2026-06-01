@@ -73,6 +73,50 @@ def load_conditions(limit: int) -> list[ConditionRecord]:
         conn.close()
 
 
+def load_patient_context(patient_ids: list[str]) -> dict:
+    """Load co-occurring conditions and medications for a list of patient IDs.
+
+    Returns dict[patient_id -> {conditions: [...], medications: [...]}].
+    Used to inject patient context into enrichment prompts.
+    """
+    if not patient_ids:
+        return {}
+
+    conn = _get_connection()
+    placeholders = ", ".join(f"'{pid}'" for pid in patient_ids)
+    context: dict = {pid: {"conditions": [], "medications": []} for pid in patient_ids}
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT patient_id, condition_code, condition_description
+            FROM stg_condition
+            WHERE patient_id IN ({placeholders})
+            ORDER BY onset_date DESC NULLS LAST
+            """  # nosec B608 — patient_ids are internal pipeline values, not user input
+        )
+        for row in cursor.fetchall():
+            pid, code, desc = row
+            if pid in context:
+                context[pid]["conditions"].append({"code": code, "description": desc})
+
+        cursor.execute(
+            f"""
+            SELECT patient_id, medication_code, medication_description
+            FROM stg_medication
+            WHERE patient_id IN ({placeholders})
+            ORDER BY start_date DESC NULLS LAST
+            """  # nosec B608
+        )
+        for row in cursor.fetchall():
+            pid, code, desc = row
+            if pid in context:
+                context[pid]["medications"].append({"code": code, "description": desc})
+    finally:
+        conn.close()
+    return context
+
+
 def load_medications(limit: int) -> list[MedicationRecord]:
     conn = _get_connection()
     try:
