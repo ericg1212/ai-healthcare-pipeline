@@ -20,7 +20,7 @@ dbt-snowflake>=1.8.0
 great-expectations>=1.4.0
 
 # Dashboard
-streamlit>=1.32.0
+streamlit>=1.58.0
 
 # Testing
 pytest>=8.0.0
