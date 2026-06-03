@@ -25,10 +25,10 @@
 
 Denied classified denials retrospectively. Trust but Verify adds AI governance. Cleared prevents the denial before it happens.
 
-| Project | Focus | Status |
+| Pipeline | Focus | Status |
 |---|---|---|
 | [Denied](https://github.com/ericg1212/healthcare-claims-pipeline) | Retrospective denial classification — separate 27K systematic denials with an upstream fix from 229K documentation failures requiring a different intervention | Live |
-| **[Trust but Verify *(this project)*](https://github.com/ericg1212/ai-healthcare-pipeline)** | Clinical AI governance — LLM enrichment + rules engine cross-validation, every routing decision explainable | Live |
+| **[Trust but Verify *(this pipeline)*](https://github.com/ericg1212/ai-healthcare-pipeline)** | Clinical AI governance — LLM enrichment + rules engine cross-validation, every routing decision explainable | Live |
 | Cleared *(planned)* | Real-time prior auth prevention — RAG-enhanced payer criteria matching at point of submission, streaming ingestion | Planned |
 
 ---
@@ -202,7 +202,7 @@ Synthea (Python FHIR R4 generator)
 
 ---
 
-## Project Structure
+## Structure
 
 ```
 ai-healthcare-pipeline/
