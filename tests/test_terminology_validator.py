@@ -1,4 +1,4 @@
-from ai_layer.models import ConditionRecord, MedicationRecord
+from ai_layer.models import ConditionRecord
 from ai_layer.terminology_validator import (
     _validate_snomed,
     validate_batch,

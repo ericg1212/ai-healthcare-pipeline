@@ -245,14 +245,6 @@ ai-healthcare-pipeline/
 
 ---
 
-## Future Enhancements
-
-**[Priority 1] RAG with Clinical Guidelines**
-Retrieve current clinical guidelines (ACC/AHA cardiovascular, ADA diabetes management, SAMHSA behavioral health) at inference time and inject them into the enrichment prompt. The LLM reasons against authoritative, current literature rather than training knowledge alone. Requires a vector database (Pinecone) for guideline embeddings and a retrieval layer keyed on SNOMED CT concept.
-
-**[Priority 2] Event-Driven Architecture**
-CMS-0057-F (effective Jan 2027) mandates 72-hour prior auth response windows — batch pipelines cannot meet this SLA. Migration path: Snowpipe for real-time FHIR ingest, Dagster sensor on S3 arrival events, dbt MERGE for idempotent upserts. Sub-hour end-to-end latency target.
-
 ---
 
 ## Setup
