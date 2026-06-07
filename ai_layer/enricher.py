@@ -121,11 +121,11 @@ For conditions, also consider onset_date recency: a recent onset date on an
 acute code raises urgency; a decades-old onset on a chronic code lowers it.
 
 ### 3. coding_accuracy
-Measures whether the description text matches what the ICD-10 or NDC code
+Measures whether the description text matches what the SNOMED CT or RxNorm code
 actually represents. This catches mismatches between free-text and coded values.
 
-  Score 0.9–1.0: Description is the official ICD-10 or NDC label, or is a
-                 direct clinical synonym. No discrepancy.
+  Score 0.9–1.0: Description is the official SNOMED CT preferred term or RxNorm
+                 label, or is a direct clinical synonym. No discrepancy.
   Score 0.7–0.8: Minor wording difference but clinically equivalent.
   Score 0.5–0.6: Description is related but broader or narrower than the code.
   Score 0.3–0.4: Partial mismatch — description suggests a different condition
@@ -208,7 +208,7 @@ ENRICHMENT_TOOL: dict = {
         "properties": {
             "diagnosis_specificity": {
                 "type": "object",
-                "description": "Is the ICD-10 code specific (7-char) or a catch-all (3-char)?",
+                "description": "How specific is the SNOMED CT or RxNorm concept? Leaf-level clinical concepts score high; broad category codes score low.",
                 "properties": {
                     "score": {"type": "number", "minimum": 0, "maximum": 1},
                     "rationale": {"type": "string"},
@@ -226,7 +226,7 @@ ENRICHMENT_TOOL: dict = {
             },
             "coding_accuracy": {
                 "type": "object",
-                "description": "Does the description match the ICD-10 or NDC code?",
+                "description": "Does the description match the SNOMED CT or RxNorm code?",
                 "properties": {
                     "score": {"type": "number", "minimum": 0, "maximum": 1},
                     "rationale": {"type": "string"},
@@ -395,6 +395,7 @@ def enrich_record(
         record_type=record_type,
         record_code=record_code,
         record_description=record_description,
+        onset_date=record.onset_date if isinstance(record, ConditionRecord) else None,
         diagnosis_specificity=CategoryScore(**raw["diagnosis_specificity"]),
         clinical_urgency=CategoryScore(**raw["clinical_urgency"]),
         coding_accuracy=CategoryScore(**raw["coding_accuracy"]),

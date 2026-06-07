@@ -46,6 +46,7 @@ class EnrichmentResult(BaseModel):
     record_type: Literal["condition", "medication"]
     record_code: str
     record_description: str
+    onset_date: date | None = None
 
     diagnosis_specificity: CategoryScore
     clinical_urgency: CategoryScore

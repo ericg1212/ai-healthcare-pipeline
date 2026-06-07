@@ -31,7 +31,7 @@ def route(enrichment: EnrichmentResult, verdict: JudgeVerdict) -> GoldRecord:
             patient_id=enrichment.patient_id,
             condition_code=enrichment.record_code,
             condition_description=enrichment.record_description,
-            onset_date=None,
+            onset_date=enrichment.onset_date,
         )
     else:
         record = MedicationRecord(

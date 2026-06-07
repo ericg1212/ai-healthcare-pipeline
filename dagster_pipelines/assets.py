@@ -305,6 +305,9 @@ def gold_review_routing(context) -> MaterializeResult:
         counts[r.gold_status] = counts.get(r.gold_status, 0) + 1
     context.log.info(f"Gold status counts: {counts}")
 
+    # Build lookup so rationale (stored on EnrichmentResult) can be joined at write time.
+    enrichment_map = {(e.patient_id, e.record_code): e for e in enrichments}
+
     conn = snowflake.connector.connect(
         account=os.environ["SNOWFLAKE_ACCOUNT"],
         user=os.environ["SNOWFLAKE_USER"],
@@ -318,22 +321,30 @@ def gold_review_routing(context) -> MaterializeResult:
         cur.execute("CREATE SCHEMA IF NOT EXISTS GOLD")
         cur.execute("""
             CREATE TABLE IF NOT EXISTS GOLD.GOLD_RECORDS (
-                patient_id        VARCHAR,
-                record_type       VARCHAR,
-                record_code       VARCHAR,
-                record_description VARCHAR,
-                overall_confidence FLOAT,
-                gold_status       VARCHAR,
-                review_reason     VARCHAR,
-                flags_triggered   VARCHAR,
-                judge_agrees      BOOLEAN,
-                corrected_confidence FLOAT,
-                routed_at         TIMESTAMP_NTZ
+                patient_id                           VARCHAR,
+                record_type                          VARCHAR,
+                record_code                          VARCHAR,
+                record_description                   VARCHAR,
+                overall_confidence                   FLOAT,
+                gold_status                          VARCHAR,
+                review_reason                        VARCHAR,
+                flags_triggered                      VARCHAR,
+                judge_agrees                         BOOLEAN,
+                corrected_confidence                 FLOAT,
+                diagnosis_specificity_rationale      VARCHAR,
+                clinical_urgency_rationale           VARCHAR,
+                coding_accuracy_rationale            VARCHAR,
+                medication_appropriateness_rationale VARCHAR,
+                drug_condition_alignment_rationale   VARCHAR,
+                comorbidity_risk_rationale           VARCHAR,
+                routed_at                            TIMESTAMP_NTZ
             )
         """)
         cur.execute("TRUNCATE TABLE GOLD.GOLD_RECORDS")
-        rows = [
-            (
+        rows = []
+        for r in gold_records:
+            e = enrichment_map.get((r.patient_id, r.record_code))
+            rows.append((
                 r.patient_id,
                 r.record_type,
                 r.record_code,
@@ -344,12 +355,16 @@ def gold_review_routing(context) -> MaterializeResult:
                 ",".join(r.flags_triggered) if r.flags_triggered else None,
                 r.judge_agrees,
                 r.corrected_confidence,
+                e.diagnosis_specificity.rationale if e else None,
+                e.clinical_urgency.rationale if e else None,
+                e.coding_accuracy.rationale if e else None,
+                e.medication_appropriateness.rationale if e else None,
+                e.drug_condition_alignment.rationale if e else None,
+                e.comorbidity_risk.rationale if e else None,
                 r.routed_at,
-            )
-            for r in gold_records
-        ]
+            ))
         cur.executemany(
-            "INSERT INTO GOLD.GOLD_RECORDS VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO GOLD.GOLD_RECORDS VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             rows,
         )
         context.log.info(f"Wrote {len(rows)} rows to GOLD.GOLD_RECORDS")
