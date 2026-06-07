@@ -22,7 +22,6 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from dagster import MaterializeResult, MetadataValue, asset
@@ -155,8 +154,7 @@ def condition_enrichments(context) -> MaterializeResult:
     if errors:
         context.log.warning(f"Enrichment errors: {errors}")
 
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    out_path = OUTPUT_DIR / f"condition_enrichments_{timestamp}.json"
+    out_path = OUTPUT_DIR / f"condition_enrichments_{context.run_id}.json"
     out_path.write_text(
         json.dumps([r.model_dump(mode="json") for r in results], indent=2, default=str)
     )
@@ -200,8 +198,7 @@ def medication_enrichments(context) -> MaterializeResult:
     if errors:
         context.log.warning(f"Enrichment errors: {errors}")
 
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    out_path = OUTPUT_DIR / f"medication_enrichments_{timestamp}.json"
+    out_path = OUTPUT_DIR / f"medication_enrichments_{context.run_id}.json"
     out_path.write_text(
         json.dumps([r.model_dump(mode="json") for r in results], indent=2, default=str)
     )
@@ -227,27 +224,27 @@ def medication_enrichments(context) -> MaterializeResult:
     compute_kind="llm",
 )
 def ai_enrichment_verdicts(context) -> MaterializeResult:
-    """Run LLM-as-Judge on the latest condition + medication enrichment files."""
+    """Run LLM-as-Judge on condition + medication enrichment files from this run."""
     from ai_layer.judge import judge_batch
     from ai_layer.models import EnrichmentResult
 
-    # Load the most recently written enrichment files
-    def _load_latest(prefix: str) -> list[EnrichmentResult]:
-        files = sorted(OUTPUT_DIR.glob(f"{prefix}_*.json"), reverse=True)
-        if not files:
-            return []
-        raw = json.loads(files[0].read_text())
-        return [EnrichmentResult(**r) for r in raw]
+    run_id = context.run_id
 
-    all_results = _load_latest("condition_enrichments") + _load_latest("medication_enrichments")
+    def _load_for_run(prefix: str) -> list[EnrichmentResult]:
+        path = OUTPUT_DIR / f"{prefix}_{run_id}.json"
+        if not path.exists():
+            context.log.warning(f"Expected file not found: {path}")
+            return []
+        return [EnrichmentResult(**r) for r in json.loads(path.read_text())]
+
+    all_results = _load_for_run("condition_enrichments") + _load_for_run("medication_enrichments")
     context.log.info(f"Judging {len(all_results)} enrichment results")
 
     verdicts, errors = judge_batch(all_results)
     disagree = sum(1 for v in verdicts if not v.judge_agrees)
     context.log.info(f"Judge: {len(verdicts)} ok, {disagree} disagreements, {len(errors)} errors")
 
-    timestamp = datetime.utcnow().strftime("%Y%m%dT%H%M%S")
-    out_path = OUTPUT_DIR / f"judge_verdicts_{timestamp}.json"
+    out_path = OUTPUT_DIR / f"judge_verdicts_{run_id}.json"
     out_path.write_text(
         json.dumps([v.model_dump(mode="json") for v in verdicts], indent=2, default=str)
     )
@@ -284,14 +281,17 @@ def gold_review_routing(context) -> MaterializeResult:
     from ai_layer.models import EnrichmentResult, JudgeVerdict
     from ai_layer.router import route_batch
 
-    def _load_latest(prefix: str) -> list:
-        files = sorted(OUTPUT_DIR.glob(f"{prefix}_*.json"), reverse=True)
-        if not files:
-            return []
-        return json.loads(files[0].read_text())
+    run_id = context.run_id
 
-    enrichment_raw = _load_latest("condition_enrichments") + _load_latest("medication_enrichments")
-    verdict_raw = _load_latest("judge_verdicts")
+    def _load_for_run(prefix: str) -> list:
+        path = OUTPUT_DIR / f"{prefix}_{run_id}.json"
+        if not path.exists():
+            context.log.warning(f"Expected file not found: {path}")
+            return []
+        return json.loads(path.read_text())
+
+    enrichment_raw = _load_for_run("condition_enrichments") + _load_for_run("medication_enrichments")
+    verdict_raw = _load_for_run("judge_verdicts")
 
     enrichments = [EnrichmentResult(**r) for r in enrichment_raw]
     verdicts = [JudgeVerdict(**v) for v in verdict_raw]
@@ -337,10 +337,11 @@ def gold_review_routing(context) -> MaterializeResult:
                 medication_appropriateness_rationale VARCHAR,
                 drug_condition_alignment_rationale   VARCHAR,
                 comorbidity_risk_rationale           VARCHAR,
+                run_id                               VARCHAR,
                 routed_at                            TIMESTAMP_NTZ
             )
         """)
-        cur.execute("TRUNCATE TABLE GOLD.GOLD_RECORDS")
+        cur.execute("DELETE FROM GOLD.GOLD_RECORDS WHERE run_id = %s", (run_id,))
         rows = []
         for r in gold_records:
             e = enrichment_map.get((r.patient_id, r.record_code))
@@ -361,10 +362,12 @@ def gold_review_routing(context) -> MaterializeResult:
                 e.medication_appropriateness.rationale if e else None,
                 e.drug_condition_alignment.rationale if e else None,
                 e.comorbidity_risk.rationale if e else None,
+                run_id,
                 r.routed_at,
             ))
         cur.executemany(
-            "INSERT INTO GOLD.GOLD_RECORDS VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+            "INSERT INTO GOLD.GOLD_RECORDS VALUES "
+            "(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
             rows,
         )
         context.log.info(f"Wrote {len(rows)} rows to GOLD.GOLD_RECORDS")
