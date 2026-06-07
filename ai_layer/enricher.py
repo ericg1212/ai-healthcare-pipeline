@@ -208,7 +208,10 @@ ENRICHMENT_TOOL: dict = {
         "properties": {
             "diagnosis_specificity": {
                 "type": "object",
-                "description": "How specific is the SNOMED CT or RxNorm concept? Leaf-level clinical concepts score high; broad category codes score low.",
+                "description": (
+                    "How specific is the SNOMED CT or RxNorm concept? "
+                    "Leaf-level clinical concepts score high; broad category codes score low."
+                ),
                 "properties": {
                     "score": {"type": "number", "minimum": 0, "maximum": 1},
                     "rationale": {"type": "string"},

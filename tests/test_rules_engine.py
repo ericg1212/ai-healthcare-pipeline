@@ -1,5 +1,4 @@
 from datetime import date
-import pytest
 from ai_layer.models import ConditionRecord, MedicationRecord
 from ai_layer.rules_engine import RulesEngine
 
@@ -62,7 +61,10 @@ def test_medication_appropriateness_flags_high_risk_med():
 
 
 def test_medication_appropriateness_clean_on_standard_med():
-    r = MedicationRecord(patient_id="P004", medication_code="860975", medication_description="metformin 500 mg oral tablet")
+    r = MedicationRecord(
+        patient_id="P004", medication_code="860975",
+        medication_description="metformin 500 mg oral tablet",
+    )
     result = engine.evaluate(r)
     assert result.medication_appropriateness_flag is False
 
@@ -74,7 +76,10 @@ def test_drug_condition_alignment_flags_missing_rxnorm():
 
 
 def test_comorbidity_risk_flags_chronic_without_onset():
-    r = ConditionRecord(patient_id="P006", condition_code="709044004", condition_description="chronic kidney disease stage 3")
+    r = ConditionRecord(
+        patient_id="P006", condition_code="709044004",
+        condition_description="chronic kidney disease stage 3",
+    )
     result = engine.evaluate(r)
     assert result.comorbidity_risk_flag is True
     assert "comorbidity_risk" in result.flags_triggered
