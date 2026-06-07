@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 from ai_layer.enricher import enrich_batch
 from ai_layer.judge import judge_batch
 from ai_layer.models import ConditionRecord, MedicationRecord
+from ai_layer.terminology_validator import log_validation_summary, validate_batch
 
 load_dotenv()
 
@@ -83,7 +84,7 @@ def load_patient_context(patient_ids: list[str]) -> dict:
         return {}
 
     conn = _get_connection()
-    placeholders = ", ".join(f"'{pid}'" for pid in patient_ids)
+    in_placeholders = ", ".join(["%s"] * len(patient_ids))
     context: dict = {pid: {"conditions": [], "medications": []} for pid in patient_ids}
     try:
         cursor = conn.cursor()
@@ -91,9 +92,10 @@ def load_patient_context(patient_ids: list[str]) -> dict:
             f"""
             SELECT patient_id, condition_code, condition_description
             FROM stg_condition
-            WHERE patient_id IN ({placeholders})
+            WHERE patient_id IN ({in_placeholders})
             ORDER BY onset_date DESC NULLS LAST
-            """  # nosec B608 — patient_ids are internal pipeline values, not user input
+            """,
+            patient_ids,
         )
         for row in cursor.fetchall():
             pid, code, desc = row
@@ -104,9 +106,10 @@ def load_patient_context(patient_ids: list[str]) -> dict:
             f"""
             SELECT patient_id, medication_code, medication_description
             FROM stg_medication
-            WHERE patient_id IN ({placeholders})
+            WHERE patient_id IN ({in_placeholders})
             ORDER BY start_date DESC NULLS LAST
-            """  # nosec B608
+            """,
+            patient_ids,
         )
         for row in cursor.fetchall():
             pid, code, desc = row
@@ -157,7 +160,11 @@ def run(record_type: str, limit: int) -> None:
         n = limit if record_type == "medication" else max(1, limit // 2)
         records += load_medications(n)
 
-    print(f"Loaded {len(records)} record(s). Running enrichment...")
+    print(f"Loaded {len(records)} record(s). Validating terminology...")
+    validation = validate_batch(records)
+    log_validation_summary(validation)
+
+    print("Running enrichment...")
     enrichment_results, enrichment_errors, enrichment_usage = enrich_batch(records)
     print(
         f"Enrichment done: {len(enrichment_results)} ok, "

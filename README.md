@@ -1,10 +1,9 @@
-# Trust but Verify: Clinical AI Governance Engine [![v1.0.0](https://img.shields.io/badge/version-1.0.0-blue?style=flat-square)](https://github.com/ericg1212/ai-healthcare-pipeline/releases/tag/v1.0.0)
+# Trust but Verify: Clinical AI Governance Engine
 
 [![CI](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline)
-[![Release](https://img.shields.io/github/v/release/ericg1212/ai-healthcare-pipeline)](https://github.com/ericg1212/ai-healthcare-pipeline/releases)
-[![dbt Docs](https://img.shields.io/badge/dbt%20Docs-live-FF694B?style=flat-square&logo=dbt&logoColor=white)](https://ericg1212.github.io/ai-healthcare-pipeline/)
+[![Release](https://img.shields.io/github/v/release/ericg1212/ai-healthcare-pipeline?style=flat-square)](https://github.com/ericg1212/ai-healthcare-pipeline/releases)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white)](https://www.snowflake.com/)
 [![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square&logo=dbt&logoColor=white)](https://www.getdbt.com/)
@@ -112,6 +111,12 @@ Anchoring bias: if the Judge sees the enricher's reasoning, it tends to rational
 **Why deterministic rules alongside the LLM?**
 LLMs are probabilistic — the same record can score differently across runs. For Medication Safety and high-risk comorbidity flags (T2D + CKD, polypharmacy), deterministic enforcement is non-negotiable. The rules engine provides a stable, auditable floor that doesn't drift.
 
+**Why is the confidence threshold set below the batch average?**
+The threshold (0.55) sits below the observed batch average (0.584) deliberately — records near the mean route to human review rather than auto-clearing to Gold. This trades a larger review queue for a lower false-negative rate on clinical flags. The right threshold depends on operational review capacity; raise toward 0.65+ once that is known.
+
+**Why validate terminology before enrichment?**
+A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and produce a confident but wrong enrichment score. Validating codes against NLM authoritative vocabularies at the ingestion boundary catches code drift early, before it reaches the LLM. RxNorm validation uses the free NLM RxNav API; SNOMED CT validation uses a numeric format check with an optional UMLS API extension for full concept lookup.
+
 ---
 
 ## Results
@@ -158,10 +163,6 @@ LLMs are probabilistic — the same record can score differently across runs. Fo
 
 ## Architecture
 
-![Dagster Asset Graph](docs/dagster_asset_graph.png)
-
-*8-asset Dagster pipeline — ingestion → staging → AI enrichment (parallel) → LLM-as-Judge → Gold/Review routing → dbt marts*
-
 ```
 Synthea (Python FHIR R4 generator)
          ↓
@@ -199,6 +200,10 @@ Synthea (Python FHIR R4 generator)
          ↓
   Streamlit dashboard (Phase 2)
 ```
+
+![Dagster Asset Graph](docs/dagster_asset_graph.png)
+
+*8-asset Dagster pipeline — ingestion → staging → AI enrichment (parallel) → LLM-as-Judge → Gold/Review routing → dbt marts*
 
 ---
 
@@ -239,20 +244,6 @@ ai-healthcare-pipeline/
 ```
 
 ---
-
-## Future Enhancements
-
-**[Priority 1] RAG with Clinical Guidelines**
-Retrieve current clinical guidelines (ACC/AHA cardiovascular, ADA diabetes management, SAMHSA behavioral health) at inference time and inject them into the enrichment prompt. The LLM reasons against authoritative, current literature rather than training knowledge alone. Requires a vector database (Pinecone) for guideline embeddings and a retrieval layer keyed on SNOMED CT concept.
-
-**[Priority 2] Event-Driven Architecture**
-CMS-0057-F (effective Jan 2027) mandates 72-hour prior auth response windows — batch pipelines cannot meet this SLA. Migration path: Snowpipe for real-time FHIR ingest, Dagster sensor on S3 arrival events, dbt MERGE for idempotent upserts. Sub-hour end-to-end latency target.
-
-**SNOMED CT / RxNorm API Validation**
-Terminology verification against NLM/FDA authoritative vocabularies at ingestion — catches code drift before enrichment.
-
-**Confidence Threshold Calibration**
-Tunable review queue sizing based on operational capacity and acceptable risk tolerance. Current threshold (0.55) calibrated from observed batch avg (0.584).
 
 ---
 
