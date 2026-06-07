@@ -123,13 +123,16 @@ A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and pr
 
 | Metric | Value |
 |---|---|
-| Enrichment success rate | 97/100 records scored without validation errors (3 errors) |
+| Records enriched | 174 (166 judged — 8 judge API errors) |
 | Avg overall_confidence | 0.584 across conditions + medications |
-| Confidence threshold | 0.55 — records below routed to `enriched_review_low_confidence` |
+| Gold clean | 13 (7.8%) — passed dual validation + confidence ≥ 0.55 |
+| Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
+| Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
+| Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
 | Most common Judge trigger | Internal inconsistency (coding_accuracy vs. diagnosis_specificity) |
+| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high coding_accuracy + low diagnosis_specificity — judge Trigger #3 calibration gap; scoped for P4 |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
 | Pydantic validation failures | Raised at parse time — zero silent failures downstream |
-| Gold routing states | `enriched_clean` / `enriched_review_conflict` / `enriched_review_low_confidence` |
 
 ---
 
