@@ -1,5 +1,5 @@
 # Claude API
-anthropic>=0.49.0
+anthropic>=0.107.1
 
 # AWS
 boto3>=1.43.21
