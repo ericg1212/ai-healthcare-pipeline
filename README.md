@@ -117,6 +117,9 @@ The threshold (0.55) sits below the observed batch average (0.584) deliberately 
 **Why validate terminology before enrichment?**
 A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and produce a confident but wrong enrichment score. Validating codes against NLM authoritative vocabularies at the ingestion boundary catches code drift early, before it reaches the LLM. RxNorm validation uses the free NLM RxNav API; SNOMED CT validation uses a numeric format check with an optional UMLS API extension for full concept lookup.
 
+**Why Anthropic Claude over GPT-4 or Gemini?**
+Three reasons specific to this use case: (1) `tool_use` structured output is a first-class primitive — not a prompt hack — which matters for Pydantic validation at the boundary; (2) prompt caching is natively supported, critical for cost control on a system-prompt-heavy clinical governance workload; (3) the extended context window handles full patient context injection (conditions + medications + encounters) without truncation. Any frontier model would produce similar enrichment quality; the architectural choice is about structured output reliability and cost predictability at batch scale.
+
 ---
 
 ## Results
@@ -125,14 +128,16 @@ A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and pr
 |---|---|
 | Records enriched | 174 (166 judged — 8 judge API errors) |
 | Avg overall_confidence | 0.584 across conditions + medications |
-| Gold clean | 13 (7.8%) — passed dual validation + confidence ≥ 0.55 |
+| **Gold clean** | **13 (7.8%) — passed dual validation + confidence ≥ 0.55** |
 | Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
 | Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
 | Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
-| Most common Judge trigger | Internal inconsistency (coding_accuracy vs. diagnosis_specificity) |
-| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high coding_accuracy + low diagnosis_specificity — judge Trigger #3 calibration gap; scoped for P4 |
+| Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
+| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — judge Trigger #3 calibration gap; scoped for P4 |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
 | Pydantic validation failures | Raised at parse time — zero silent failures downstream |
+
+> **On the 7.8% Gold rate:** A 7.8% Gold rate is not a low-precision outcome — it is the system working correctly. The dual-validator design intentionally routes anything uncertain to Review rather than letting it pass. Synthetic FHIR data (Synthea) produces broad-category SNOMED concepts and generic descriptions that reliably trigger the LLM-as-Judge's internal inconsistency check (`coding_accuracy ≥ 0.8` with `diagnosis_specificity ≤ 0.4`). On real EHR data with leaf-level SNOMED CT codes and clinical documentation, the Gold rate would be materially higher. The pipeline's value is not the Gold rate itself — it is that every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
 
 ---
 
