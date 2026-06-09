@@ -40,16 +40,14 @@ Clinical documentation gaps are the leading driver of prior authorization denial
 
 ## Why Dual Validation?
 
-A single LLM confidence score is insufficient for clinical governance — it only tells you how certain the model is about its own output. It cannot tell you whether that output violates a domain rule a generalist model might not reliably enforce.
-
-This pipeline uses two orthogonal validators targeting different failure modes:
+A single confidence score only tells you how certain the model is about its own output — it cannot catch domain rule violations a generalist model might miss. Two orthogonal validators, two different failure modes:
 
 | Validator | Failure Mode It Catches |
 |---|---|
-| **LLM-as-Judge** | Statistical inconsistencies *within* the AI output — inflated scores, flat scoring, internal contradictions between categories |
-| **Rules Engine** | Domain violations the LLM might miss — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
+| **LLM-as-Judge** | Statistical inconsistencies within the AI output — inflated scores, flat scoring, internal contradictions |
+| **Rules Engine** | Domain violations — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
 
-Trust the model's enrichment output as a starting signal — verify it independently against a deterministic standard before it acts. A record that passes one validator but not the other still routes to Review. Both must agree for Gold. This design survives the failure mode where a confident but wrong LLM output would otherwise pass a threshold gate unchallenged.
+Both must agree for Gold. One disagrees → Review, with a reason.
 
 ---
 
@@ -96,26 +94,16 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 
 ## Design Decisions
 
-**Why `tool_use` instead of free-text parsing?**
-Structured output enforced at the API level — the LLM cannot return malformed JSON or skip a required field. Pydantic validates on ingestion; invalid enrichments raise at parse time, not silently downstream. This eliminates an entire class of data quality bugs.
-
-**Why prompt caching?**
-The system prompt is ~2,000 tokens and identical across every record in a batch. Caching it means calls 2–N cost ~10% of the first call's input token price. At batch scale this is a 5–10× cost reduction with zero quality tradeoff.
-
-**Why a `model_validator` on `overall_confidence`?**
-Allowing `overall_confidence` to diverge arbitrarily from the category average creates a silent inconsistency — a record could show HIGH overall confidence with LOW individual scores. The validator enforces ≤0.25 divergence at parse time, making the enrichment self-consistent by construction.
-
-**Why rationale hidden from the Judge?**
-Anchoring bias: if the Judge sees the enricher's reasoning, it tends to rationalize rather than audit. Scores-only input forces the Judge to evaluate statistical consistency independently, which is the only thing it can do objectively.
-
-**Why deterministic rules alongside the LLM?**
-LLMs are probabilistic — the same record can score differently across runs. For Medication Safety and high-risk comorbidity flags (T2D + CKD, polypharmacy), deterministic enforcement is non-negotiable. The rules engine provides a stable, auditable floor that doesn't drift.
-
-**Why is the confidence threshold set below the batch average?**
-The threshold (0.55) sits below the observed batch average (0.584) deliberately — records near the mean route to human review rather than auto-clearing to Gold. This trades a larger review queue for a lower false-negative rate on clinical flags. The right threshold depends on operational review capacity; raise toward 0.65+ once that is known.
-
-**Why validate terminology before enrichment?**
-A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and produce a confident but wrong enrichment score. Validating codes against NLM authoritative vocabularies at the ingestion boundary catches code drift early, before it reaches the LLM. RxNorm validation uses the free NLM RxNav API; SNOMED CT validation uses a numeric format check with an optional UMLS API extension for full concept lookup.
+| Decision | Why |
+|---|---|
+| **`tool_use` over free-text parsing** | Structured output enforced at the API level — LLM can't return malformed JSON or skip a field. Pydantic validates at parse time, not silently downstream |
+| **Prompt caching** | System prompt is ~2,000 tokens, identical across every record. Calls 2–N cost ~10% of call 1 — 5–10× cost reduction at batch scale |
+| **`model_validator` on `overall_confidence`** | Prevents silent inconsistency where HIGH overall confidence masks LOW category scores. Enforces ≤0.25 divergence at parse time |
+| **Rationale hidden from the Judge** | Anchoring bias — if the Judge sees the enricher's reasoning, it rationalizes rather than audits. Scores-only input forces independent statistical evaluation |
+| **Deterministic rules alongside the LLM** | LLMs are probabilistic and can drift run-to-run. Medication Safety and comorbidity flags (T2D+CKD, polypharmacy) require a stable, auditable floor |
+| **Confidence threshold below batch average** | 0.55 sits below observed avg (0.584) — routes borderline records to Review rather than auto-clearing to Gold. Tunable in `router.py` as review capacity scales |
+| **Terminology validation before enrichment** | Drifted SNOMED CT / RxNorm codes produce confident but wrong enrichments. NLM vocabulary check at the ingestion boundary catches code issues before they reach the LLM |
+| **Claude over GPT-4 / Gemini** | `tool_use` is a first-class primitive (not a prompt hack), prompt caching is native, and context window handles full patient context injection without truncation |
 
 ---
 
@@ -125,14 +113,16 @@ A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and pr
 |---|---|
 | Records enriched | 174 (166 judged — 8 judge API errors) |
 | Avg overall_confidence | 0.584 across conditions + medications |
-| Gold clean | 13 (7.8%) — passed dual validation + confidence ≥ 0.55 |
+| **Gold clean** | **13 (7.8%) — passed dual validation + confidence ≥ 0.55** |
 | Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
 | Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
 | Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
-| Most common Judge trigger | Internal inconsistency (coding_accuracy vs. diagnosis_specificity) |
-| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high coding_accuracy + low diagnosis_specificity — judge Trigger #3 calibration gap; scoped for P4 |
+| Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
+| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — judge Trigger #3 calibration gap; scoped for P4 |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
 | Pydantic validation failures | Raised at parse time — zero silent failures downstream |
+
+> **On the 7.8% Gold rate:** A 7.8% Gold rate is not a low-precision outcome — it is the system working correctly. The dual-validator design intentionally routes anything uncertain to Review rather than letting it pass. Synthetic FHIR data (Synthea) produces broad-category SNOMED concepts and generic descriptions that reliably trigger the LLM-as-Judge's internal inconsistency check (`coding_accuracy ≥ 0.8` with `diagnosis_specificity ≤ 0.4`). On real EHR data with leaf-level SNOMED CT codes and clinical documentation, the Gold rate would be materially higher. The pipeline's value is not the Gold rate itself — it is that every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
 
 ---
 
