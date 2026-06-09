@@ -40,16 +40,14 @@ Clinical documentation gaps are the leading driver of prior authorization denial
 
 ## Why Dual Validation?
 
-A single LLM confidence score is insufficient for clinical governance — it only tells you how certain the model is about its own output. It cannot tell you whether that output violates a domain rule a generalist model might not reliably enforce.
-
-This pipeline uses two orthogonal validators targeting different failure modes:
+A single confidence score only tells you how certain the model is about its own output — it cannot catch domain rule violations a generalist model might miss. Two orthogonal validators, two different failure modes:
 
 | Validator | Failure Mode It Catches |
 |---|---|
-| **LLM-as-Judge** | Statistical inconsistencies *within* the AI output — inflated scores, flat scoring, internal contradictions between categories |
-| **Rules Engine** | Domain violations the LLM might miss — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
+| **LLM-as-Judge** | Statistical inconsistencies within the AI output — inflated scores, flat scoring, internal contradictions |
+| **Rules Engine** | Domain violations — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
 
-Trust the model's enrichment output as a starting signal — verify it independently against a deterministic standard before it acts. A record that passes one validator but not the other still routes to Review. Both must agree for Gold. This design survives the failure mode where a confident but wrong LLM output would otherwise pass a threshold gate unchallenged.
+Both must agree for Gold. One disagrees → Review, with a reason.
 
 ---
 
