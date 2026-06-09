@@ -96,29 +96,16 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 
 ## Design Decisions
 
-**Why `tool_use` instead of free-text parsing?**
-Structured output enforced at the API level — the LLM cannot return malformed JSON or skip a required field. Pydantic validates on ingestion; invalid enrichments raise at parse time, not silently downstream. This eliminates an entire class of data quality bugs.
-
-**Why prompt caching?**
-The system prompt is ~2,000 tokens and identical across every record in a batch. Caching it means calls 2–N cost ~10% of the first call's input token price. At batch scale this is a 5–10× cost reduction with zero quality tradeoff.
-
-**Why a `model_validator` on `overall_confidence`?**
-Allowing `overall_confidence` to diverge arbitrarily from the category average creates a silent inconsistency — a record could show HIGH overall confidence with LOW individual scores. The validator enforces ≤0.25 divergence at parse time, making the enrichment self-consistent by construction.
-
-**Why rationale hidden from the Judge?**
-Anchoring bias: if the Judge sees the enricher's reasoning, it tends to rationalize rather than audit. Scores-only input forces the Judge to evaluate statistical consistency independently, which is the only thing it can do objectively.
-
-**Why deterministic rules alongside the LLM?**
-LLMs are probabilistic — the same record can score differently across runs. For Medication Safety and high-risk comorbidity flags (T2D + CKD, polypharmacy), deterministic enforcement is non-negotiable. The rules engine provides a stable, auditable floor that doesn't drift.
-
-**Why is the confidence threshold set below the batch average?**
-The threshold (0.55) sits below the observed batch average (0.584) deliberately — records near the mean route to human review rather than auto-clearing to Gold. This trades a larger review queue for a lower false-negative rate on clinical flags. The right threshold depends on operational review capacity; raise toward 0.65+ once that is known.
-
-**Why validate terminology before enrichment?**
-A corrupt or drifted SNOMED CT or RxNorm code would pass through silently and produce a confident but wrong enrichment score. Validating codes against NLM authoritative vocabularies at the ingestion boundary catches code drift early, before it reaches the LLM. RxNorm validation uses the free NLM RxNav API; SNOMED CT validation uses a numeric format check with an optional UMLS API extension for full concept lookup.
-
-**Why Anthropic Claude over GPT-4 or Gemini?**
-Three reasons specific to this use case: (1) `tool_use` structured output is a first-class primitive — not a prompt hack — which matters for Pydantic validation at the boundary; (2) prompt caching is natively supported, critical for cost control on a system-prompt-heavy clinical governance workload; (3) the extended context window handles full patient context injection (conditions + medications + encounters) without truncation. Any frontier model would produce similar enrichment quality; the architectural choice is about structured output reliability and cost predictability at batch scale.
+| Decision | Why |
+|---|---|
+| **`tool_use` over free-text parsing** | Structured output enforced at the API level — LLM can't return malformed JSON or skip a field. Pydantic validates at parse time, not silently downstream |
+| **Prompt caching** | System prompt is ~2,000 tokens, identical across every record. Calls 2–N cost ~10% of call 1 — 5–10× cost reduction at batch scale |
+| **`model_validator` on `overall_confidence`** | Prevents silent inconsistency where HIGH overall confidence masks LOW category scores. Enforces ≤0.25 divergence at parse time |
+| **Rationale hidden from the Judge** | Anchoring bias — if the Judge sees the enricher's reasoning, it rationalizes rather than audits. Scores-only input forces independent statistical evaluation |
+| **Deterministic rules alongside the LLM** | LLMs are probabilistic and can drift run-to-run. Medication Safety and comorbidity flags (T2D+CKD, polypharmacy) require a stable, auditable floor |
+| **Confidence threshold below batch average** | 0.55 sits below observed avg (0.584) — routes borderline records to Review rather than auto-clearing to Gold. Tunable in `router.py` as review capacity scales |
+| **Terminology validation before enrichment** | Drifted SNOMED CT / RxNorm codes produce confident but wrong enrichments. NLM vocabulary check at the ingestion boundary catches code issues before they reach the LLM |
+| **Claude over GPT-4 / Gemini** | `tool_use` is a first-class primitive (not a prompt hack), prompt caching is native, and context window handles full patient context injection without truncation |
 
 ---
 
