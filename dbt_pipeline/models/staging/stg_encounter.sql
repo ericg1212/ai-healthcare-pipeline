@@ -1,3 +1,4 @@
+﻿-- Copyright (c) 2026 Eric Grynspan. All rights reserved.
 WITH source AS (
       SELECT * FROM {{ source('raw', 'encounter') }}
   ),

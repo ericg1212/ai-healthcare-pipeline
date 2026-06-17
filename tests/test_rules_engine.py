@@ -1,3 +1,4 @@
+﻿# Copyright (c) 2026 Eric Grynspan. All rights reserved.
 from datetime import date
 from ai_layer.models import ConditionRecord, MedicationRecord
 from ai_layer.rules_engine import RulesEngine
