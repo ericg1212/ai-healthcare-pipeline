@@ -1,3 +1,4 @@
+﻿# Copyright (c) 2026 Eric Grynspan. All rights reserved.
 """
 Dagster software-defined assets — AI Healthcare Pipeline v0.
 

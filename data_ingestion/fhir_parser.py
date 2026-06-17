@@ -1,3 +1,4 @@
+﻿# Copyright (c) 2026 Eric Grynspan. All rights reserved.
 import json
 from pathlib import Path
 

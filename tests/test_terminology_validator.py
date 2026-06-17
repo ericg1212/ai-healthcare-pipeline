@@ -1,3 +1,4 @@
+﻿# Copyright (c) 2026 Eric Grynspan. All rights reserved.
 from ai_layer.models import ConditionRecord
 from ai_layer.terminology_validator import (
     _validate_snomed,
