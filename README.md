@@ -6,9 +6,9 @@
 [![Release](https://img.shields.io/github/v/release/ericg1212/ai-healthcare-pipeline?style=flat-square)](https://github.com/ericg1212/ai-healthcare-pipeline/releases)
 [![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white)](https://www.snowflake.com/)
-[![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square&logo=dbt&logoColor=white)](https://www.getdbt.com/)
-[![Dagster](https://img.shields.io/badge/Dagster-4F43DD?style=flat-square&logo=dagster&logoColor=white)](https://dagster.io/)
-[![AWS S3](https://img.shields.io/badge/AWS%20S3-232F3E?style=flat-square&logo=amazonaws&logoColor=white)](https://aws.amazon.com/s3/)
+[![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square)](https://www.getdbt.com/)
+[![Dagster](https://img.shields.io/badge/Dagster-4F43DD?style=flat-square)](https://dagster.io/)
+[![AWS S3](https://img.shields.io/badge/AWS%20S3-232F3E?style=flat-square)](https://aws.amazon.com/s3/)
 [![FHIR R4](https://img.shields.io/badge/HL7%20FHIR-R4-E8670A?style=flat-square)](https://hl7.org/fhir/R4/)
 
 ![Patients](https://img.shields.io/badge/Patients-226-0ea5e9?style=flat-square)
