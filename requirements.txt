@@ -8,7 +8,7 @@ boto3>=1.43.30
 snowflake-connector-python>=4.6.0
 
 # Orchestration
-dagster>=1.13.9
+dagster>=1.13.11
 dagster-webserver>=1.13.9
 dagster-dbt>=0.28.8
 
