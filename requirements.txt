@@ -2,7 +2,7 @@
 anthropic>=0.113.0
 
 # AWS
-boto3>=1.43.37
+boto3>=1.43.41
 
 # Snowflake
 snowflake-connector-python>=4.6.0
