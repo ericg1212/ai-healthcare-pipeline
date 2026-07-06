@@ -26,7 +26,7 @@ Denied classified denials retrospectively. Trust but Verify adds AI governance. 
 |---|---|---|
 | [Denied](https://github.com/ericg1212/healthcare-claims-pipeline) | Retrospective denial classification — separate 27K systematic denials with an upstream fix from 229K documentation failures requiring a different intervention | Live |
 | **[Trust but Verify *(this project)*](https://github.com/ericg1212/ai-healthcare-pipeline)** | Clinical AI governance — LLM enrichment + rules engine cross-validation, every routing decision explainable | Live |
-| [Cleared](https://github.com/ericg1212/agentic-rcm-pipeline) | Real-time prior auth prevention — RAG-enhanced payer criteria matching at point of submission, streaming ingestion | Live |
+| [Cleared](https://github.com/ericg1212/agentic-rcm-pipeline) | Real-time prior auth prevention — in-memory payer criteria matching at point of submission, streaming ingestion | Live |
 
 ---
 
@@ -116,24 +116,11 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
 | Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
 | Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
-| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — judge Trigger #3 calibration gap; scoped for P4 |
+| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — a judge Trigger #3 calibration gap, scoped for follow-up |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
 | Pydantic validation failures | Raised at parse time — zero silent failures downstream |
 
-> **On the 7.8% Gold rate:** A 7.8% Gold rate is not a low-precision outcome — it is the system working correctly. The dual-validator design intentionally routes anything uncertain to Review rather than letting it pass. Synthetic FHIR data (Synthea) produces broad-category SNOMED concepts and generic descriptions that reliably trigger the LLM-as-Judge's internal inconsistency check (`coding_accuracy ≥ 0.8` with `diagnosis_specificity ≤ 0.4`). On real EHR data with leaf-level SNOMED CT codes and clinical documentation, the Gold rate would be materially higher. The pipeline's value is not the Gold rate itself — it is that every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
-
----
-
-## Scale
-
-| Metric | Value |
-|---|---|
-| Patient records | 226 synthetic FHIR R4 patients |
-| Total clinical records | 25,958 (conditions + medications + encounters) |
-| AI enrichment categories | 6 per record |
-| Confidence threshold | 0.55 (configurable via `router.py`) |
-| Rules engine categories | 6 deterministic clinical domains |
-| Validation gate | Dual — LLM-as-Judge + Rules Engine |
+> **On the 7.8% Gold rate:** The dual-validator design routes uncertainty to Review by design. Synthea's broad-category SNOMED concepts reliably trigger the Judge's internal-consistency check; real EHR data with leaf-level codes and clinical documentation yields a materially higher Gold rate. The metric that matters is traceability — every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
 
 ---
 
@@ -154,42 +141,22 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 
 ## Architecture
 
-```
-Synthea (Python FHIR R4 generator)
-         ↓
-  Python FHIR Parser
-         ↓
-    AWS S3 (Raw FHIR JSON)
-         ↓  COPY INTO
-  Snowflake RAW layer
-         ↓
-  dbt (Bronze → Silver staging)
-         ↓
-┌─────────────────────────────────┐
-│        AI ENRICHMENT LAYER      │
-│                                 │
-│  1. LLM Enrichment              │
-│     6-category scoring          │
-│     confidence < 0.55 → REVIEW  │
-│             ↓                   │
-│  2. LLM-as-Judge                │
-│     blind audit, 5 triggers     │
-│     disagreement → REVIEW       │
-│             ↓                   │
-│  3. Structured Rules Engine     │
-│     6 clinical categories       │
-│     deterministic cross-check   │
-│     conflict → REVIEW           │
-│     agreement → GOLD            │
-└─────────────────────────────────┘
-         ↓
-  Snowflake GOLD + REVIEW marts
-         ↓
-  dbt (mart layer)
-         ↓
-  Dagster (orchestrates full asset graph)
-         ↓
-  Streamlit dashboard (Phase 2)
+```mermaid
+flowchart TB
+    SYN["Synthea FHIR R4 generator<br/>226 patients"] --> P["Python FHIR Parser"]
+    P --> S3[("AWS S3<br/>raw FHIR JSON")]
+    S3 -->|COPY INTO| RAW[("Snowflake RAW")]
+    RAW --> STG["dbt staging<br/>Bronze → Silver"]
+    STG --> ENR["1 · LLM Enrichment<br/>6-category scoring<br/>confidence < 0.55 → Review"]
+    ENR --> J["2 · LLM-as-Judge<br/>blind audit, 5 triggers<br/>disagreement → Review"]
+    STG --> RUL["3 · Structured Rules Engine<br/>6 clinical categories<br/>deterministic cross-check"]
+    J --> RT{"Gold / Review<br/>Routing Gate"}
+    RUL --> RT
+    RT -->|dual agreement| GOLD[("Snowflake GOLD mart<br/>trusted for automation")]
+    RT -->|conflict / low confidence| REV[("Snowflake REVIEW mart<br/>explainable reason")]
+    GOLD --> DAG["Dagster<br/>full asset graph"]
+    REV --> DAG
+    DAG --> ST["Streamlit dashboard<br/>(Phase 2)"]
 ```
 
 ![Dagster Asset Graph](docs/dagster_asset_graph.png)
@@ -202,39 +169,13 @@ Synthea (Python FHIR R4 generator)
 
 ```
 ai-healthcare-pipeline/
-├── data_ingestion/
-│   ├── fhir_generator.py       # Synthea JAR wrapper — 226 FHIR R4 patient bundles
-│   ├── fhir_parser.py          # Parse FHIR R4 JSON → PERSON/CONDITION/MEDICATION/ENCOUNTER
-│   └── load_to_snowflake.py    # S3 upload + Snowflake COPY INTO (25,958 records)
-├── ai_layer/
-│   ├── models.py               # Pydantic schemas: ConditionRecord, MedicationRecord,
-│   │                           #   EnrichmentResult, JudgeVerdict, GoldRecord
-│   ├── enricher.py             # LLM enrichment — SNOMED CT/RxNorm aware, tool_use
-│   │                           #   structured output, prompt caching, patient context
-│   │                           #   injection, concurrent enrich_batch()
-│   ├── judge.py                # LLM-as-Judge — blind review, 5 disagreement triggers,
-│   │                           #   corrected_confidence, concurrent judge_batch()
-│   ├── rules_engine.py         # Deterministic rules — 6 clinical categories, binary flags
-│   ├── router.py               # Gold/Review routing gate — 3 gold states, conflict
-│   │                           #   detection, confidence threshold (0.55)
-│   └── run_enrichment.py       # CLI + Snowflake loaders incl. load_patient_context()
-├── dbt_pipeline/
-│   ├── models/
-│   │   ├── staging/            # stg_person, stg_condition, stg_medication, stg_encounter
-│   │   └── marts/              # gold_records, review_records (live)
-│   └── dbt_project.yml
-├── dagster_pipelines/
-│   ├── assets.py               # 8 SDAs: fhir_s3_upload → snowflake_raw_tables →
-│   │                           #   dbt_staging_models → condition_enrichments +
-│   │                           #   medication_enrichments → ai_enrichment_verdicts →
-│   │                           #   gold_review_routing → dbt_mart_models
-│   └── definitions.py          # Dagster Definitions entry point
-├── workspace.yaml              # dagster dev -m dagster_pipelines
-├── streamlit_app/              # Dashboard (Phase 2)
-└── tests/                      # pytest unit tests
+├── data_ingestion/      # Synthea wrapper · FHIR R4 parser · S3 upload + Snowflake COPY INTO
+├── ai_layer/            # enricher, judge, rules engine, router · Pydantic schemas · CLI
+├── dbt_pipeline/        # staging views + gold_records / review_records marts
+├── dagster_pipelines/   # 8 software-defined assets: ingestion → enrichment → routing → marts
+├── streamlit_app/       # dashboard (Phase 2)
+└── tests/               # pytest unit tests
 ```
-
----
 
 ---
 
