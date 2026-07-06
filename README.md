@@ -134,7 +134,6 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | Transformation | dbt |
 | AI enrichment | LLM API (Anthropic) |
 | Orchestration | Dagster |
-| Dashboard | Streamlit *(Phase 2)* |
 | CI | GitHub Actions |
 
 ---
@@ -142,21 +141,20 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 ## Architecture
 
 ```mermaid
-flowchart TB
-    SYN["Synthea FHIR R4 generator<br/>226 patients"] --> P["Python FHIR Parser"]
+flowchart LR
+    SYN["Synthea FHIR R4<br/>226 patients"] --> P["Python FHIR Parser"]
     P --> S3[("AWS S3<br/>raw FHIR JSON")]
     S3 -->|COPY INTO| RAW[("Snowflake RAW")]
     RAW --> STG["dbt staging<br/>Bronze → Silver"]
-    STG --> ENR["1 · LLM Enrichment<br/>6-category scoring<br/>confidence < 0.55 → Review"]
-    ENR --> J["2 · LLM-as-Judge<br/>blind audit, 5 triggers<br/>disagreement → Review"]
-    STG --> RUL["3 · Structured Rules Engine<br/>6 clinical categories<br/>deterministic cross-check"]
+    STG --> ENR["LLM Enrichment<br/>6-category scoring<br/>confidence < 0.55 → Review"]
+    ENR --> J["LLM-as-Judge<br/>blind audit, 5 triggers<br/>disagreement → Review"]
+    STG --> RUL["Structured Rules Engine<br/>6 clinical categories<br/>deterministic cross-check"]
     J --> RT{"Gold / Review<br/>Routing Gate"}
     RUL --> RT
-    RT -->|dual agreement| GOLD[("Snowflake GOLD mart<br/>trusted for automation")]
-    RT -->|conflict / low confidence| REV[("Snowflake REVIEW mart<br/>explainable reason")]
+    RT -->|dual agreement| GOLD[("GOLD mart<br/>trusted for automation")]
+    RT -->|conflict / low confidence| REV[("REVIEW mart<br/>explainable reason")]
     GOLD --> DAG["Dagster<br/>full asset graph"]
     REV --> DAG
-    DAG --> ST["Streamlit dashboard<br/>(Phase 2)"]
 ```
 
 ![Dagster Asset Graph](docs/dagster_asset_graph.png)
@@ -173,7 +171,6 @@ ai-healthcare-pipeline/
 ├── ai_layer/            # enricher, judge, rules engine, router · Pydantic schemas · CLI
 ├── dbt_pipeline/        # staging views + gold_records / review_records marts
 ├── dagster_pipelines/   # 8 software-defined assets: ingestion → enrichment → routing → marts
-├── streamlit_app/       # dashboard (Phase 2)
 └── tests/               # pytest unit tests
 ```
 
