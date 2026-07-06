@@ -94,14 +94,14 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 
 | Decision | Why |
 |---|---|
-| **`tool_use` over free-text parsing** | Structured output enforced at the API level — LLM can't return malformed JSON or skip a field. Pydantic validates at parse time, not silently downstream |
-| **Prompt caching** | System prompt is ~2,000 tokens, identical across every record. Calls 2–N cost ~10% of call 1 — 5–10× cost reduction at batch scale |
-| **`model_validator` on `overall_confidence`** | Prevents silent inconsistency where HIGH overall confidence masks LOW category scores. Enforces ≤0.25 divergence at parse time |
-| **Rationale hidden from the Judge** | Anchoring bias — if the Judge sees the enricher's reasoning, it rationalizes rather than audits. Scores-only input forces independent statistical evaluation |
-| **Deterministic rules alongside the LLM** | LLMs are probabilistic and can drift run-to-run. Medication Safety and comorbidity flags (T2D+CKD, polypharmacy) require a stable, auditable floor |
-| **Confidence threshold below batch average** | 0.55 sits below observed avg (0.584) — routes borderline records to Review rather than auto-clearing to Gold. Tunable in `router.py` as review capacity scales |
-| **Terminology validation before enrichment** | Drifted SNOMED CT / RxNorm codes produce confident but wrong enrichments. NLM vocabulary check at the ingestion boundary catches code issues before they reach the LLM |
-| **Claude over GPT-4 / Gemini** | `tool_use` is a first-class primitive (not a prompt hack), prompt caching is native, and context window handles full patient context injection without truncation |
+| **`tool_use` over free-text parsing** | Structured output enforced at the API level — malformed JSON is impossible, Pydantic validates at parse time |
+| **Prompt caching** | Identical ~2,000-token system prompt across every record — calls 2–N cost ~10% of call 1 |
+| **`model_validator` on `overall_confidence`** | HIGH overall confidence can't mask LOW category scores — ≤0.25 divergence enforced at parse time |
+| **Rationale hidden from the Judge** | Anchoring bias — a judge that sees the reasoning rationalizes instead of auditing |
+| **Deterministic rules alongside the LLM** | Medication Safety and comorbidity flags need a stable, auditable floor — LLMs drift run-to-run |
+| **Confidence threshold below batch average** | 0.55 sits under the observed 0.584 — borderline records route to Review, not Gold |
+| **Terminology validation before enrichment** | Drifted SNOMED/RxNorm codes produce confident but wrong enrichments — caught at the ingestion boundary |
+| **Claude over GPT-4 / Gemini** | `tool_use` is a first-class primitive, caching is native, and the context window fits full patient injection |
 
 ---
 
