@@ -1,26 +1,26 @@
 # Claude API
-anthropic>=0.113.0
+anthropic>=0.116.0
 
 # AWS
-boto3>=1.43.37
+boto3>=1.43.41
 
 # Snowflake
 snowflake-connector-python>=4.6.0
 
 # Orchestration
 dagster>=1.13.11
-dagster-webserver>=1.13.11
+dagster-webserver>=1.13.12
 dagster-dbt>=0.28.8
 
 # Transformation
-dbt-core>=1.8.0
+dbt-core>=1.11.12
 dbt-snowflake>=1.11.6
 
 # Data Quality
 great-expectations>=1.4.0
 
 # Dashboard
-streamlit>=1.58.0
+streamlit>=1.59.0
 
 # Testing
 pytest>=9.1.0
