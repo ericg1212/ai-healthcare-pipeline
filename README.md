@@ -4,12 +4,13 @@
 [![CodeQL](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml/badge.svg)](https://github.com/ericg1212/ai-healthcare-pipeline/actions/workflows/codeql.yml)
 [![codecov](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline/branch/main/graph/badge.svg)](https://codecov.io/gh/ericg1212/ai-healthcare-pipeline)
 [![Release](https://img.shields.io/github/v/release/ericg1212/ai-healthcare-pipeline?style=flat-square)](https://github.com/ericg1212/ai-healthcare-pipeline/releases)
-[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![FHIR R4](https://img.shields.io/badge/HL7%20FHIR-R4-E8670A?style=flat-square)](https://hl7.org/fhir/R4/)
+[![AWS S3](https://img.shields.io/badge/AWS%20S3-232F3E?style=flat-square)](https://aws.amazon.com/s3/)
 [![Snowflake](https://img.shields.io/badge/Snowflake-29B5E8?style=flat-square&logo=snowflake&logoColor=white)](https://www.snowflake.com/)
 [![dbt](https://img.shields.io/badge/dbt-FF694B?style=flat-square)](https://www.getdbt.com/)
+![LLM](https://img.shields.io/badge/LLM-enrichment%20%2B%20judge-5A67D8?style=flat-square)
 [![Dagster](https://img.shields.io/badge/Dagster-4F43DD?style=flat-square)](https://dagster.io/)
-[![AWS S3](https://img.shields.io/badge/AWS%20S3-232F3E?style=flat-square)](https://aws.amazon.com/s3/)
-[![FHIR R4](https://img.shields.io/badge/HL7%20FHIR-R4-E8670A?style=flat-square)](https://hl7.org/fhir/R4/)
+[![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 
 ![Patients](https://img.shields.io/badge/Patients-226-0ea5e9?style=flat-square)
 ![Records](https://img.shields.io/badge/Clinical%20Records-25%2C958-8b5cf6?style=flat-square)
@@ -46,6 +47,50 @@ A single confidence score only tells you how certain the model is about its own 
 | **Rules Engine** | Domain violations — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
 
 Both must agree for Gold. One disagrees → Review, with a reason.
+
+---
+
+## Results
+
+| Metric | Value |
+|---|---|
+| Records enriched | 174 (166 judged — 8 judge API errors) |
+| Avg overall_confidence | 0.584 across conditions + medications |
+| **Gold clean** | **13 (7.8%) — passed dual validation + confidence ≥ 0.55** |
+| Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
+| Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
+| Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
+| Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
+| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — a judge Trigger #3 calibration gap, scoped for follow-up |
+| Prompt cache hit rate | ~90%+ on batches > 10 records |
+| Pydantic validation failures | Raised at parse time — zero silent failures downstream |
+
+> **On the 7.8% Gold rate:** The dual-validator design routes uncertainty to Review by design. Synthea's broad-category SNOMED concepts reliably trigger the Judge's internal-consistency check; real EHR data with leaf-level codes and clinical documentation yields a materially higher Gold rate. The metric that matters is traceability — every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    SYN["Synthea FHIR R4<br/>226 patients"] --> P["Python FHIR Parser"]
+    P --> S3[("AWS S3<br/>raw FHIR JSON")]
+    S3 -->|COPY INTO| RAW[("Snowflake RAW")]
+    RAW --> STG["dbt staging<br/>Bronze → Silver"]
+    STG --> ENR["LLM Enrichment<br/>6-category scoring<br/>confidence < 0.55 → Review"]
+    ENR --> J["LLM-as-Judge<br/>blind audit, 5 triggers<br/>disagreement → Review"]
+    STG --> RUL["Structured Rules Engine<br/>6 clinical categories<br/>deterministic cross-check"]
+    J --> RT{"Gold / Review<br/>Routing Gate"}
+    RUL --> RT
+    RT -->|dual agreement| GOLD[("GOLD mart<br/>trusted for automation")]
+    RT -->|conflict / low confidence| REV[("REVIEW mart<br/>explainable reason")]
+    GOLD --> DAG["Dagster<br/>full asset graph"]
+    REV --> DAG
+```
+
+![Dagster Asset Graph](docs/dagster_asset_graph.png)
+
+*8-asset Dagster pipeline — ingestion → staging → AI enrichment (parallel) → LLM-as-Judge → Gold/Review routing → dbt marts*
 
 ---
 
@@ -105,25 +150,6 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 
 ---
 
-## Results
-
-| Metric | Value |
-|---|---|
-| Records enriched | 174 (166 judged — 8 judge API errors) |
-| Avg overall_confidence | 0.584 across conditions + medications |
-| **Gold clean** | **13 (7.8%) — passed dual validation + confidence ≥ 0.55** |
-| Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
-| Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
-| Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
-| Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
-| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — a judge Trigger #3 calibration gap, scoped for follow-up |
-| Prompt cache hit rate | ~90%+ on batches > 10 records |
-| Pydantic validation failures | Raised at parse time — zero silent failures downstream |
-
-> **On the 7.8% Gold rate:** The dual-validator design routes uncertainty to Review by design. Synthea's broad-category SNOMED concepts reliably trigger the Judge's internal-consistency check; real EHR data with leaf-level codes and clinical documentation yields a materially higher Gold rate. The metric that matters is traceability — every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
-
----
-
 ## Stack
 
 | Layer | Technology |
@@ -135,31 +161,7 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | AI enrichment | LLM API (Anthropic) |
 | Orchestration | Dagster |
 | CI | GitHub Actions |
-
----
-
-## Architecture
-
-```mermaid
-flowchart LR
-    SYN["Synthea FHIR R4<br/>226 patients"] --> P["Python FHIR Parser"]
-    P --> S3[("AWS S3<br/>raw FHIR JSON")]
-    S3 -->|COPY INTO| RAW[("Snowflake RAW")]
-    RAW --> STG["dbt staging<br/>Bronze → Silver"]
-    STG --> ENR["LLM Enrichment<br/>6-category scoring<br/>confidence < 0.55 → Review"]
-    ENR --> J["LLM-as-Judge<br/>blind audit, 5 triggers<br/>disagreement → Review"]
-    STG --> RUL["Structured Rules Engine<br/>6 clinical categories<br/>deterministic cross-check"]
-    J --> RT{"Gold / Review<br/>Routing Gate"}
-    RUL --> RT
-    RT -->|dual agreement| GOLD[("GOLD mart<br/>trusted for automation")]
-    RT -->|conflict / low confidence| REV[("REVIEW mart<br/>explainable reason")]
-    GOLD --> DAG["Dagster<br/>full asset graph"]
-    REV --> DAG
-```
-
-![Dagster Asset Graph](docs/dagster_asset_graph.png)
-
-*8-asset Dagster pipeline — ingestion → staging → AI enrichment (parallel) → LLM-as-Judge → Gold/Review routing → dbt marts*
+| Language | Python 3.13 |
 
 ---
 
