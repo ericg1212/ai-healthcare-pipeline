@@ -21,7 +21,7 @@
 
 ---
 
-Denied classified denials retrospectively. Trust but Verify adds AI governance. Cleared prevents the denial before it happens.
+Denied classifies denials retrospectively. Trust but Verify adds AI governance. Cleared prevents the denial before it happens.
 
 | Pipeline | Focus | Status |
 |---|---|---|
