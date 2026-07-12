@@ -187,7 +187,7 @@ ai-healthcare-pipeline/
 
 ---
 
-## Setup
+## Quickstart
 
 ```bash
 git clone https://github.com/ericg1212/ai-healthcare-pipeline.git
