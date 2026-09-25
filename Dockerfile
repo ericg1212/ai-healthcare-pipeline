@@ -8,6 +8,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Patch transitive packages flagged HIGH by Trivy (msgpack GHSA-6v7p-g79w-8964,
+# setuptools CVE-2025-47273). The runtime stage copies these site-packages.
+RUN pip install --no-cache-dir --upgrade "msgpack>=1.2.1" "setuptools>=78.1.1"
 
 FROM python:3.13-slim
 
