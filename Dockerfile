@@ -16,6 +16,10 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
+# pip vendors old msgpack/setuptools copies (Trivy HIGH: GHSA-6v7p-g79w-8964,
+# CVE-2025-47273). The runtime never installs packages, so drop pip entirely.
+RUN python -m pip uninstall -y pip
+
 COPY . .
 
 EXPOSE 8501
