@@ -8,9 +8,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# Patch transitive packages flagged HIGH by Trivy (msgpack GHSA-6v7p-g79w-8964,
-# setuptools CVE-2025-47273). The runtime stage copies these site-packages.
-RUN pip install --no-cache-dir --upgrade "msgpack>=1.2.1" "setuptools>=78.1.1"
 
 FROM python:3.13-slim
 
@@ -18,6 +15,10 @@ WORKDIR /app
 
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
+
+# pip vendors old msgpack/setuptools copies (Trivy HIGH: GHSA-6v7p-g79w-8964,
+# CVE-2025-47273). The runtime never installs packages, so drop pip entirely.
+RUN python -m pip uninstall -y pip
 
 COPY . .
 
