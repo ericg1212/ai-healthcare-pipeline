@@ -58,7 +58,7 @@ Both must agree for Gold. One disagrees → Review, with a reason.
 | **Gold clean** | **13 (7.8%) — passed dual validation + confidence ≥ 0.55** |
 | Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
 | Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
-| Confidence threshold | 0.55 — set conservatively below batch avg (0.584) |
+| Confidence threshold | 0.55 — set below batch avg (0.584); raise it to route more records to Review |
 | Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
 | Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — a judge Trigger #3 calibration gap, scoped for follow-up |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
@@ -143,7 +143,7 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | **`model_validator` on `overall_confidence`** | HIGH overall confidence can't mask LOW category scores — ≤0.25 divergence enforced at parse time |
 | **Rationale hidden from the Judge** | Anchoring bias — a judge that sees the reasoning rationalizes instead of auditing |
 | **Deterministic rules alongside the LLM** | Medication Safety and comorbidity flags need a stable, auditable floor — LLMs drift run-to-run |
-| **Confidence threshold below batch average** | 0.55 sits under the observed 0.584 — borderline records route to Review, not Gold |
+| **Confidence threshold below batch average** | 0.55 sits under the observed 0.584, so records at the mean clear the confidence gate; conflicts, not confidence, drive most Review routing (114 of 153). Raise the threshold to widen human review once capacity is known |
 | **Terminology validation before enrichment** | Drifted SNOMED/RxNorm codes produce confident but wrong enrichments — caught at the ingestion boundary |
 | **Claude over GPT-4 / Gemini** | `tool_use` is a first-class primitive, caching is native, and the context window fits full patient injection |
 

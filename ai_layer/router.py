@@ -21,10 +21,11 @@ from ai_layer.models import (
 )
 from ai_layer.rules_engine import RulesEngine
 
-# Threshold set conservatively below the observed batch average (0.584).
-# Trades a larger review queue for a lower false-negative rate on clinical flags —
-# records near the mean route to human review rather than auto-clearing to Gold.
-# Raise toward 0.65+ to shrink queue size once operational review capacity is known.
+# Threshold set below the observed batch average (0.584): records at or near the
+# mean clear the confidence gate and reach Gold unless a conflict routes them to
+# review. Lowering it is more permissive (smaller review queue, more false
+# negatives); raise toward 0.65+ to route more records to human review once
+# operational review capacity is known.
 CONFIDENCE_THRESHOLD = 0.55
 
 _engine = RulesEngine()
