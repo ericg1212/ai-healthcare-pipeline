@@ -95,7 +95,7 @@ Both must agree for Gold. One disagrees → Review, with a reason.
 
 ## AI Layer
 
-Four components run on every record. Components 1, 2, and 3 are live; 4 is Phase 2.
+Four components run on every record — all four are live.
 
 **1. LLM Enrichment** ✓ Live
 
