@@ -51,7 +51,7 @@ Clinical documentation gaps are the leading driver of prior authorization denial
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
 | Pydantic validation failures | Raised at parse time — zero silent failures downstream |
 
-> **On the 7.8% Gold rate:** The dual-validator design routes uncertainty to Review by design. Synthea's broad-category SNOMED concepts reliably trigger the Judge's internal-consistency check; real EHR data with leaf-level codes and clinical documentation yields a materially higher Gold rate. The metric that matters is traceability — every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box.
+> **On the 7.8% Gold rate:** The dual-validator design routes uncertainty to Review by design. Synthea's broad-category SNOMED concepts reliably trigger the Judge's internal-consistency check; real EHR data with leaf-level codes and clinical documentation yields a materially higher Gold rate. The metric that matters is traceability — every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box. Sample: 174 synthetic enriched records, a demonstration of the routing gate's behavior, not a performance benchmark.
 
 ---
 
