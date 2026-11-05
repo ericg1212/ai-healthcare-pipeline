@@ -59,13 +59,13 @@ Clinical documentation gaps are the leading driver of prior authorization denial
 
 ```mermaid
 flowchart LR
-    SYN["Synthea FHIR R4<br/>226 patients"] --> P["Python FHIR Parser"]
-    P --> S3[("AWS S3<br/>raw FHIR JSON")]
-    S3 -->|COPY INTO| RAW[("Snowflake RAW")]
-    RAW --> STG["dbt staging<br/>Bronze → Silver"]
+    SYN["Synthea FHIR R4<br/>226 patients"] --> P["Python FHIR Parser<br/>4 tables"]
+    SYN -.->|archive upload| S3[("AWS S3<br/>raw FHIR JSON")]
+    P -->|write_pandas| RAW[("Snowflake RAW")]
+    RAW --> STG["dbt staging<br/>RAW → staging views"]
     STG --> ENR["LLM Enrichment<br/>6-category scoring<br/>confidence < 0.55 → Review"]
     ENR --> J["LLM-as-Judge<br/>blind audit, 5 triggers<br/>disagreement → Review"]
-    STG --> RUL["Structured Rules Engine<br/>6 clinical categories<br/>deterministic cross-check"]
+    STG --> RUL["Structured Rules Engine<br/>6 flag checks<br/>any flag fired = conflict"]
     J --> RT{"Gold / Review<br/>Routing Gate"}
     RUL --> RT
     RT -->|dual agreement| GOLD[("GOLD mart<br/>trusted for automation")]
@@ -87,7 +87,7 @@ A single confidence score only tells you how certain the model is about its own 
 | Validator | Failure Mode It Catches |
 |---|---|
 | **LLM-as-Judge** | Statistical inconsistencies within the AI output — inflated scores, flat scoring, internal contradictions |
-| **Rules Engine** | Domain violations — Medication Safety flags, care gaps, missing diagnoses in high-risk comorbidity clusters |
+| **Rules Engine** | Domain violations — vague or placeholder diagnoses, acute or high-risk chronic conditions missing an onset date, high-alert medications, blank RxNorm codes |
 
 Both must agree for Gold. One disagrees → Review, with a reason.
 
@@ -126,7 +126,7 @@ When the judge disagrees, it returns `corrected_confidence`, the specific `disag
 
 **3. Structured Rules Engine** ✓ Live
 
-Deterministic Python — 6 categories (Diabetes & Metabolic, Cardiovascular, Medication Safety, Care Gaps, Data Completeness, Mental Health & Behavioral). Runs parallel to the LLM on every record. Flag aggregation rule: HIGH if `flags_fired ≥ 2` OR any Medication Safety flag fires.
+Deterministic Python — 6 flag checks named after the scoring dimensions (diagnosis specificity, clinical urgency, coding accuracy, medication appropriateness, drug-condition alignment, comorbidity risk). Runs parallel to the LLM on every record. Any flag fired routes the record to Review as a conflict, and the `review_reason` names the flags.
 
 **4. Gold / Review Routing** ✓ Live
 
@@ -142,9 +142,9 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | **Prompt caching** | Identical ~2,000-token system prompt across every record — calls 2–N cost ~10% of call 1 |
 | **`model_validator` on `overall_confidence`** | HIGH overall confidence can't mask LOW category scores — ≤0.25 divergence enforced at parse time |
 | **Rationale hidden from the Judge** | Anchoring bias — a judge that sees the reasoning rationalizes instead of auditing |
-| **Deterministic rules alongside the LLM** | Medication Safety and comorbidity flags need a stable, auditable floor — LLMs drift run-to-run |
+| **Deterministic rules alongside the LLM** | High-alert medication and comorbidity flags need a stable, auditable floor — LLMs drift run-to-run |
 | **Confidence threshold below batch average** | 0.55 sits under the observed 0.584, so records at the mean clear the confidence gate; conflicts, not confidence, drive most Review routing (114 of 153). Raise the threshold to widen human review once capacity is known |
-| **Terminology validation before enrichment** | Drifted SNOMED/RxNorm codes produce confident but wrong enrichments — caught at the ingestion boundary |
+| **Terminology validation before enrichment** | Drifted SNOMED/RxNorm codes produce confident but wrong enrichments — the validator runs in the `run_enrichment` CLI before any LLM call (the Dagster assets do not call it) |
 | **Claude over GPT-4 / Gemini** | `tool_use` is a first-class primitive, caching is native, and the context window fits full patient injection |
 
 ---
@@ -154,8 +154,8 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 | Layer | Technology | Role |
 |---|---|---|
 | Synthetic data | Python FHIR R4 (Synthea) | PHI-free patient population — 226 patients, 25,958 clinical records |
-| Raw storage | AWS S3 | Landing zone for raw FHIR JSON |
-| Warehouse | Snowflake | RAW → staging → GOLD / REVIEW marts |
+| Raw archive | AWS S3 | Raw FHIR JSON uploaded before the load (archive, not the load source) |
+| Warehouse | Snowflake | RAW (loaded with `write_pandas`, 4 tables) → staging → GOLD / REVIEW marts |
 | Transformation | dbt | Staging views + `gold_records` / `review_records` marts |
 | AI enrichment | LLM API (Anthropic) | 6-category enrichment + LLM-as-Judge blind audit, both prompt-cached |
 | Orchestration | Dagster | 8 software-defined assets — ingestion → enrichment → routing → marts |
@@ -170,7 +170,7 @@ LLM-as-Judge disagreement or rules engine conflict → Review queue with explain
 make test   # pytest with coverage
 ```
 
-23 tests, concentrated on the deterministic governance components: the Structured Rules Engine (12 — flag logic across the 6 clinical categories) and the terminology validator (10 — SNOMED/RxNorm drift caught at the ingestion boundary). CI runs lint + pytest on every push; CodeQL scans weekly.
+23 tests, concentrated on the deterministic governance components: the Structured Rules Engine (12 — flag logic across the 6 checks), the terminology validator (10 — SNOMED/RxNorm code drift) and 1 placeholder. The enricher, judge and router are exercised by the demo run rather than by unit tests. CI runs lint + pytest on every push; CodeQL scans weekly.
 
 ---
 
@@ -178,7 +178,7 @@ make test   # pytest with coverage
 
 ```
 ai-healthcare-pipeline/
-├── data_ingestion/      # Synthea wrapper · FHIR R4 parser · S3 upload + Snowflake COPY INTO
+├── data_ingestion/      # Synthea wrapper · FHIR R4 parser · S3 archive upload + Snowflake write_pandas load
 ├── ai_layer/            # enricher, judge, rules engine, router · Pydantic schemas · CLI
 ├── dbt_pipeline/        # staging views + gold_records / review_records marts
 ├── dagster_pipelines/   # 8 software-defined assets: ingestion → enrichment → routing → marts
