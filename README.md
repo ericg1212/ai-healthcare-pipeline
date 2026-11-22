@@ -54,7 +54,7 @@ Clinical documentation gaps are the leading driver of prior authorization denial
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
 | Pydantic validation failures | Raised at parse time, zero silent failures downstream |
 
-> **How to read the 7.8%:** one run (2026-06-04) on 174 synthetic Synthea records. It is a post-hoc figure, not a performance benchmark and not evidence about real EHR data. The v1 judge disagreed with every record, so that gate was not discriminating. What holds: every non-Gold record carries an explainable reason, and the routing is reproducible from the saved export. **Validation status:** a judge re-run with a corrected prompt and a 50-record hand-labeled sample (judge precision and recall) are pending; until then the Gold rate is uncalibrated.
+> **How to read the 7.8%:** one run (2026-06-04) on 174 synthetic Synthea records. It is a post-hoc figure, not a performance benchmark and not evidence about real EHR data. The v1 judge disagreed with every record, so that gate was not discriminating. What holds: every non-Gold record carries an explainable reason, and the routing is reproducible from the saved export. **Validation status:** pending, so the Gold rate is uncalibrated. Protocol: `python -m quality.judge_eval sample <export.json> <sheet.csv>` writes a blind, seeded 50-record sheet (25 medications, 12 non-disorder conditions, 13 disorder conditions; no judge verdict shown). After hand-labeling each row Y/N (all six scores clinically defensible?), `python -m quality.judge_eval score <export.json> <labeled.csv>` reports sensitivity, specificity, precision and Cohen's kappa with 95% Wilson intervals for the judge and for the Gold gate. A judge re-run with a corrected prompt follows the labeling.
 
 ---
 
