@@ -13,6 +13,11 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
+# Debian zlib1g HIGH (CVE-2026-85091), fixed in 1:1.3.dfsg+really1.3.1-1+deb13u1. Upgrade only that package
+# until the base image ships the fix.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade zlib1g \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
