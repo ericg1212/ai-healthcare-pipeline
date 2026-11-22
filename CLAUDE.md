@@ -4,7 +4,7 @@
 Clinical AI governance engine. FHIR bundles → S3 → Snowflake → Claude enrichment + LLM-as-Judge + Structured Rules Engine → routing.
 
 ## Key Numbers
-- 174 enriched | 166 judged | 13 gold clean (7.8%) | 39 review low conf | 114 review conflict
+- 174 enriched | 166 judged | 13 gold clean (7.8%, post-hoc: raw judge disagreed 166/166; 52 exempted) | 39 review low conf | 114 review conflict
 - 6 governance categories | CI green | v1.0.0 tagged
 
 ## Stack

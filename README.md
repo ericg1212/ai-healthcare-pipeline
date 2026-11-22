@@ -40,18 +40,21 @@ Clinical documentation gaps are the leading driver of prior authorization denial
 
 | Metric | Value |
 |---|---|
-| Records enriched | 174 (166 judged — 8 judge API errors) |
+| Records enriched | 174 (166 judged; 8 judge API errors; 26 enrichment errors) |
 | Avg overall_confidence | 0.584 across conditions + medications |
-| **Gold clean** | **13 (7.8%) — passed dual validation + confidence ≥ 0.55** |
-| Review — low confidence | 39 (23.5%) — judge agreed, no flags, confidence < 0.55 |
-| Review — conflict | 114 (68.7%) — judge disagreement or rules engine flag |
-| Confidence threshold | 0.55 — set below batch avg (0.584); raise it to route more records to Review |
-| Most common Judge trigger | Internal inconsistency (`coding_accuracy` vs. `diagnosis_specificity`) |
-| Social SNOMED edge case | 52 social/contextual codes (employment, housing) legitimately score high `coding_accuracy` + low `diagnosis_specificity` — a judge Trigger #3 calibration gap, scoped for follow-up |
+| Judge disagreement, raw (v1 prompt) | **166 of 166 (100%, 95% CI 97.7-100%)** |
+| **Gold clean, as reported** | **13 of 166 (7.8%, 95% CI 4.6-12.9%)**, after the post-hoc exemption below |
+| Review: low confidence | 39 (23.5%): judge agreed after exemption, confidence < 0.55 |
+| Review: conflict | 114 (68.7%): judge disagreement, not exempted |
+| Confidence threshold | 0.55 (batch average 0.584). 93% of conflict records already clear it, so it does not drive the Gold rate |
+| Post-hoc exemption | 52 conditions tagged finding / situation / person in SNOMED (37 / 14 / 1) were moved out of conflict by a retroactive step outside this repo. They include clinical findings (cough, prediabetes, BMI 30+) as well as social ones (employment, housing). The rule is now explicit in `ai_layer/judge_triggers.py` and reproducible with `python -m quality.trigger_audit` |
+| Root cause of the 100% | v1 trigger 1 qualifies on "no onset date" (true for 174/174: onset is not an enrichment input) or a "3-character ICD-10 code" (true for 0/174), so it fires on any score >= 0.85 (152 of 166, 91.6%) |
+| Judge categories cited (v1) | coding_accuracy 141, diagnosis_specificity 81, drug_condition_alignment 16, medication_appropriateness 12, clinical_urgency 3 |
+| Rubric v2, offline | Qualifiers applied as written fire on 0 of 166 records, so the projected Gold rate is the confidence gate alone (119 of 166 = 71.7%, CI 64.4-78.0%). It is not a quality estimate and is unvalidated; v2 is not wired into the router |
 | Prompt cache hit rate | ~90%+ on batches > 10 records |
-| Pydantic validation failures | Raised at parse time — zero silent failures downstream |
+| Pydantic validation failures | Raised at parse time, zero silent failures downstream |
 
-> **On the 7.8% Gold rate:** The dual-validator design routes uncertainty to Review by design. Synthea's broad-category SNOMED concepts reliably trigger the Judge's internal-consistency check; real EHR data with leaf-level codes and clinical documentation yields a materially higher Gold rate. The metric that matters is traceability — every non-Gold record carries an explainable reason, making the Review queue actionable rather than a black box. Sample: 174 synthetic enriched records, a demonstration of the routing gate's behavior, not a performance benchmark.
+> **How to read the 7.8%:** one run (2026-06-04) on 174 synthetic Synthea records. It is a post-hoc figure, not a performance benchmark and not evidence about real EHR data. The v1 judge disagreed with every record, so that gate was not discriminating. What holds: every non-Gold record carries an explainable reason, and the routing is reproducible from the saved export. **Validation status:** a judge re-run with a corrected prompt and a 50-record hand-labeled sample (judge precision and recall) are pending; until then the Gold rate is uncalibrated.
 
 ---
 
